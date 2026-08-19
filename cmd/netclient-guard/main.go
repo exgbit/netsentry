@@ -50,7 +50,7 @@ func runBackup() {
 }
 
 func runWatch() {
-	svc := winsvc.SCController{Name: "netclient"}
+	svc := winsvc.SCController{Name: "netclient", LogPath: netclientDir + `logs\winsw.out.log`}
 	result, err := watch.Run(netclientDir, backupDir(), svc)
 	if err != nil {
 		fmt.Println("watch ALERT:", err)

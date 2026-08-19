@@ -1,9 +1,12 @@
 package watch
 
 import (
+	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
+	"time"
 
 	"netclient-guard/internal/guardconfig"
 )
@@ -32,15 +35,50 @@ func TestDecide(t *testing.T) {
 	}
 }
 
+// fakeService 是 ServiceController 的假实现,供测试使用。
+//
+// logSequences[i] 描述第 i+1 次 Start() 调用之后,ReadLogFrom 依次返回的日志内容:每调用一次
+// ReadLogFrom 就往后取序列里的下一项,取到末尾后重复最后一项。某次 Start 对应的序列缺失
+// (nil,即默认零值)时,ReadLogFrom 立刻返回包含 brokerConnectedSignal 的内容,模拟"启动后
+// 立刻健康"——这样不关心 broker 健康检查的既有测试无需改动就能继续通过。
 type fakeService struct {
 	running    bool
 	startCalls int
 	stopCalls  int
+
+	logSequences [][][]byte
+	pollCounts   []int
 }
 
 func (f *fakeService) IsRunning() (bool, error) { return f.running, nil }
-func (f *fakeService) Start() error             { f.startCalls++; f.running = true; return nil }
-func (f *fakeService) Stop() error              { f.stopCalls++; f.running = false; return nil }
+
+func (f *fakeService) Start() error {
+	f.startCalls++
+	f.running = true
+	f.pollCounts = append(f.pollCounts, 0)
+	return nil
+}
+
+func (f *fakeService) Stop() error { f.stopCalls++; f.running = false; return nil }
+
+func (f *fakeService) LogSize() (int64, error) { return 0, nil }
+
+func (f *fakeService) ReadLogFrom(offset int64) ([]byte, error) {
+	attempt := f.startCalls
+	if attempt == 0 {
+		return nil, nil
+	}
+	if len(f.logSequences) < attempt || f.logSequences[attempt-1] == nil {
+		return []byte(brokerConnectedSignal), nil
+	}
+	seq := f.logSequences[attempt-1]
+	idx := f.pollCounts[attempt-1]
+	if idx >= len(seq) {
+		idx = len(seq) - 1
+	}
+	f.pollCounts[attempt-1]++
+	return seq[idx], nil
+}
 
 func TestRun_RestoresFromBackupWhenInconsistent(t *testing.T) {
 	netclientDir := t.TempDir()
@@ -140,6 +178,88 @@ func TestRun_StartsStoppedServiceWhenConsistent(t *testing.T) {
 	}
 	if svc.startCalls != 1 {
 		t.Errorf("expected exactly one start call, got %d", svc.startCalls)
+	}
+}
+
+func TestIsBrokerConnected(t *testing.T) {
+	cases := []struct {
+		name string
+		tail []byte
+		want bool
+	}{
+		{"contains signal", []byte(`{"level":"info","msg":"mqtt connect handler"}`), true},
+		{"unrelated content", []byte(`{"level":"warn","msg":"unable to connect to broker"}`), false},
+		{"empty", nil, false},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			if got := IsBrokerConnected(c.tail); got != c.want {
+				t.Errorf("IsBrokerConnected(%q) = %v, want %v", c.tail, got, c.want)
+			}
+		})
+	}
+}
+
+func TestStartAndVerifyHealthy_SucceedsOnFirstAttempt(t *testing.T) {
+	svc := &fakeService{running: false}
+	err := startAndVerifyHealthy(svc, 2, 50*time.Millisecond, 5*time.Millisecond)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if svc.startCalls != 1 {
+		t.Errorf("expected exactly one start call, got %d", svc.startCalls)
+	}
+	if svc.stopCalls != 0 {
+		t.Errorf("expected no stop calls, got %d", svc.stopCalls)
+	}
+}
+
+func TestStartAndVerifyHealthy_RetriesAndSucceedsOnSecondAttempt(t *testing.T) {
+	svc := &fakeService{
+		running: false,
+		// 第一次 Start 之后的每次 ReadLogFrom 都没有信号,直到超时;第二次 Start 之后立刻有信号。
+		logSequences: [][][]byte{
+			{[]byte("unable to connect to broker")},
+			{[]byte("mqtt connect handler")},
+		},
+	}
+	err := startAndVerifyHealthy(svc, 3, 30*time.Millisecond, 5*time.Millisecond)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if svc.startCalls != 2 {
+		t.Errorf("expected exactly two start calls, got %d", svc.startCalls)
+	}
+	if svc.stopCalls != 1 {
+		t.Errorf("expected exactly one stop call before the retry, got %d", svc.stopCalls)
+	}
+}
+
+func TestStartAndVerifyHealthy_FailsAfterMaxAttempts(t *testing.T) {
+	svc := &fakeService{
+		running: false,
+		logSequences: [][][]byte{
+			{[]byte("unable to connect to broker")},
+			{[]byte("unable to connect to broker")},
+		},
+	}
+	err := startAndVerifyHealthy(svc, 2, 20*time.Millisecond, 5*time.Millisecond)
+	if err == nil {
+		t.Fatalf("expected error after exhausting all attempts, got nil")
+	}
+	if svc.startCalls != 2 {
+		t.Errorf("expected exactly two start calls, got %d", svc.startCalls)
+	}
+	if !strings.Contains(err.Error(), "broker") {
+		t.Errorf("expected error to mention the broker connectivity issue, got %q", err)
+	}
+
+	// Run 用 fmt.Errorf("start service: %w", err) / "start service after restore: %w" 包装这个
+	// 错误(watch.go 里可见),%w 保留原始信息,所以包装后的错误文本里 broker 相关的细节依然完整,
+	// 足够在 guard.log 里定位问题。这里直接复现同样的包装方式来确认这一点。
+	wrapped := fmt.Errorf("start service: %w", err)
+	if !strings.Contains(wrapped.Error(), "broker") {
+		t.Errorf("expected Run's wrapped error to still mention broker, got %q", wrapped)
 	}
 }
 

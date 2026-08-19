@@ -6,13 +6,16 @@ package winsvc
 
 import (
 	"fmt"
+	"io"
+	"os"
 	"os/exec"
 	"strings"
 )
 
 // SCController 通过 sc.exe 控制指定名字的 Windows 服务。
 type SCController struct {
-	Name string
+	Name    string
+	LogPath string
 }
 
 func (c SCController) IsRunning() (bool, error) {
@@ -39,4 +42,34 @@ func (c SCController) Stop() error {
 		return fmt.Errorf("sc stop %s: %w: %s", c.Name, err, out)
 	}
 	return nil
+}
+
+func (c SCController) LogSize() (int64, error) {
+	info, err := os.Stat(c.LogPath)
+	if err != nil {
+		if os.IsNotExist(err) {
+			return 0, nil
+		}
+		return 0, fmt.Errorf("stat %s: %w", c.LogPath, err)
+	}
+	return info.Size(), nil
+}
+
+func (c SCController) ReadLogFrom(offset int64) ([]byte, error) {
+	f, err := os.Open(c.LogPath)
+	if err != nil {
+		if os.IsNotExist(err) {
+			return nil, nil
+		}
+		return nil, fmt.Errorf("open %s: %w", c.LogPath, err)
+	}
+	defer f.Close()
+	if _, err := f.Seek(offset, io.SeekStart); err != nil {
+		return nil, fmt.Errorf("seek %s: %w", c.LogPath, err)
+	}
+	data, err := io.ReadAll(f)
+	if err != nil {
+		return nil, fmt.Errorf("read %s: %w", c.LogPath, err)
+	}
+	return data, nil
 }
