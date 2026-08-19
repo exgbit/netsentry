@@ -45,7 +45,16 @@ func WatchOnStartTaskArgs(exePath string) []string {
 //
 // exePath 来自编译期确定的安装路径(不是不受信任的外部输入),因此这里直接用
 // fmt.Sprintf 做字符串替换,不做 XML 转义。
-const resumeTriggerTaskXMLTemplate = `<?xml version="1.0" encoding="UTF-8"?>
+//
+// 声明的 encoding 故意写 UTF-16,而不是"看起来更自洽"的 UTF-8——这个字符串本身
+// 是 Go 的 UTF-8 字符串,写盘时(见 register_windows.go)也确实是原样写成 UTF-8
+// 字节,声明和实际字节并不一致。这是真机实测过的结果:在 Windows 11(简体中文)上,
+// schtasks.exe /XML 只要声明 encoding="UTF-8" 就会报"任务 XML 格式错误...
+// 无法切换编码",哪怕文件字节确实是合法 UTF-8;声明 encoding="UTF-16" 反而能正常
+// 解析,不会去校验声明是否与实际字节一致。之前有一版改成 UTF-8"修正"过这个声明
+// (理由是"声明该和实际字节一致"),在真机上复现了这个报错——所以又改了回来。
+// 不要再"修正"成 UTF-8,除非你先在真机上验证过 schtasks.exe 真的能接受它。
+const resumeTriggerTaskXMLTemplate = `<?xml version="1.0" encoding="UTF-16"?>
 <Task version="1.2" xmlns="http://schemas.microsoft.com/windows/2004/02/mit/task">
   <Triggers>
     <EventTrigger>

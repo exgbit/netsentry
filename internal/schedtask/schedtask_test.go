@@ -2,6 +2,7 @@ package schedtask
 
 import (
 	"encoding/xml"
+	"io"
 	"reflect"
 	"strings"
 	"testing"
@@ -51,11 +52,21 @@ func TestWatchOnStartTaskArgs(t *testing.T) {
 func TestResumeTriggerTaskXML(t *testing.T) {
 	got := ResumeTriggerTaskXML(testExePath)
 
-	// 确认是合法 XML。
+	// 确认是合法 XML。模板声明的 encoding 是 UTF-16,但字符串本身、以及后续写盘
+	// 都是原样的 UTF-8 字节(这个不一致是故意的,详见 schedtask.go 里
+	// resumeTriggerTaskXMLTemplate 上方的注释:真机实测 schtasks.exe 就是要这么
+	// 声明才认)。Go 标准库的 xml.Unmarshal 默认会严格校验声明的 encoding,不认
+	// "UTF-16" 之外配一个 CharsetReader 就直接报错——这里给一个直接透传字节的
+	// CharsetReader,只关心"整体上是不是合法 XML 结构",不去校验声明是否与实际
+	// 字节编码一致(和 schtasks.exe 实测的宽松行为一致)。
+	dec := xml.NewDecoder(strings.NewReader(got))
+	dec.CharsetReader = func(charset string, input io.Reader) (io.Reader, error) {
+		return input, nil
+	}
 	var doc struct {
 		XMLName xml.Name `xml:"Task"`
 	}
-	if err := xml.Unmarshal([]byte(got), &doc); err != nil {
+	if err := dec.Decode(&doc); err != nil {
 		t.Fatalf("ResumeTriggerTaskXML() 不是合法 XML: %v", err)
 	}
 
