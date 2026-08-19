@@ -159,6 +159,9 @@ func Run(netclientDir, backupDir string, svc ServiceController) (Result, error) 
 
 	case ActionStartService:
 		if err := startAndVerifyHealthy(svc, defaultHealthCheckAttempts, defaultHealthCheckTimeout, defaultHealthCheckInterval); err != nil {
+			// 注意:走到这里说明 startAndVerifyHealthy 用完所有重试仍未确认连上 broker,但服务本身
+			// 处于 Started 状态,这里不会主动再 Stop 它——万一它其实是好的,没必要画蛇添足;万一还是
+			// 坏的,下一次(5 分钟后)watch 运行会重新判断。
 			return Result{Action: action}, fmt.Errorf("start service: %w", err)
 		}
 		return Result{Action: action, Detail: "service was not running, started it and verified broker connectivity"}, nil
@@ -182,6 +185,8 @@ func Run(netclientDir, backupDir string, svc ServiceController) (Result, error) 
 			return Result{Action: action}, fmt.Errorf("restore servers.json: %w", err)
 		}
 		if err := startAndVerifyHealthy(svc, defaultHealthCheckAttempts, defaultHealthCheckTimeout, defaultHealthCheckInterval); err != nil {
+			// 注意:同上——用完所有重试仍未确认连上 broker,但服务处于 Started 状态,这里不会主动
+			// 再 Stop 它;是否需要人工介入交给下一次 watch 运行重新判断。
 			return Result{Action: action}, fmt.Errorf("start service after restore: %w", err)
 		}
 		return Result{Action: action, Detail: "restored from known-good backup, restarted service, and verified broker connectivity"}, nil

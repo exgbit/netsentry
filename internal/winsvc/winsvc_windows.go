@@ -55,6 +55,13 @@ func (c SCController) LogSize() (int64, error) {
 	return info.Size(), nil
 }
 
+// ReadLogFrom 假设 winsw.out.log 是纯追加写入,不会被截断或轮转——netclient 自己生成的
+// WinSW 服务配置(daemon/common_windows.go 的 writeServiceConfig)显式设置了 <log mode="append" />,
+// 所以 offset 不会因为日志轮转而失效。如果这个前提以后变了,这里需要重新考虑。
+//
+// 注意:本实现假设 Windows 允许在其他进程(WinSW/netclient)持有写句柄时以只读方式打开这个文件。
+// Go 的 os.Open 在 Windows 上默认请求较宽松的共享标志,预期能正常工作,但这个假设尚未在真实
+// Windows 机器上针对一个正在被写入的 winsw.out.log 实测验证过。
 func (c SCController) ReadLogFrom(offset int64) ([]byte, error) {
 	f, err := os.Open(c.LogPath)
 	if err != nil {
