@@ -20,6 +20,14 @@ import (
 // powershell.exe 自身以跟提权子进程相同的退出码退出——Start-Process -Wait 本身不会把
 // 子进程的退出码透传给 powershell.exe 自己的退出码,不显式做这一步的话,提权子进程
 // 内部失败(比如中途 os.Exit(1))在发起提权的这一端会被误判成成功。
+//
+// 整段 Start-Process 调用还包了一层 try/catch,并显式加了 -ErrorAction Stop:
+// Start-Process 启动失败时(最典型的场景是用户在 UAC 弹窗上点了"否")默认只是个
+// 非终止性错误,PowerShell 会继续往下跑到 `exit $p.ExitCode`——这时 $p 还是 $null,
+// `$null.ExitCode` 是 $null,`exit $null` 会被当成 exit 0,提权彻底没发起也会被
+// 误判成成功。-ErrorAction Stop 把这个失败转成终止性错误,被 catch 捕获后显式
+// exit 1,让"UAC 被拒绝/启动失败"和"提权进程内部失败"一样,都能让包装用的
+// powershell.exe 以非零码退出。
 func relaunchCommand(exePath string, args []string) string {
 	cmd := fmt.Sprintf("$p = Start-Process -FilePath '%s'", exePath)
 	if len(args) > 0 {
@@ -29,6 +37,6 @@ func relaunchCommand(exePath string, args []string) string {
 		}
 		cmd += " -ArgumentList " + strings.Join(quoted, ",")
 	}
-	cmd += " -Verb RunAs -Wait -PassThru; exit $p.ExitCode"
-	return cmd
+	cmd += " -Verb RunAs -Wait -PassThru -ErrorAction Stop; exit $p.ExitCode"
+	return "try { " + cmd + " } catch { exit 1 }"
 }
