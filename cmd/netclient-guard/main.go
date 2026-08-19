@@ -11,6 +11,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"time"
 
 	"netclient-guard/internal/autostart"
 	"netclient-guard/internal/backup"
@@ -19,6 +20,7 @@ import (
 	"netclient-guard/internal/elevate"
 	"netclient-guard/internal/guardlog"
 	"netclient-guard/internal/schedtask"
+	"netclient-guard/internal/sysreport"
 	"netclient-guard/internal/watch"
 	"netclient-guard/internal/winsvc"
 )
@@ -26,6 +28,7 @@ import (
 const (
 	netclientDir = `C:\Program Files (x86)\Netclient\`
 	guardDir     = `C:\ProgramData\netclient-guard\`
+	guardVersion = "0.1.0-phase2"
 )
 
 func backupDir() string        { return guardDir + `backup\` }
@@ -95,10 +98,20 @@ func runWatch() {
 	fmt.Println("watch:", result.Action, "-", result.Detail)
 }
 
+// runDiag 收集设计文档要求的 7 类诊断信息,打包成一个带时间戳的 zip:
+// 1) 脱敏后的 netclient.json/servers.json(Phase 1 已有)
+// 2) winsw.out.log / winsw.err.log
+// 3) guard.log
+// 4) 服务状态(sc.exe query + winsw.xml)
+// 5) 计划任务状态
+// 6) Defender 排除列表 + 相关威胁检测记录
+// 7) 系统信息汇总(Windows/netclient/guard 版本、主机名、生成时间)
+//
+// 除了 netclient.json/servers.json 这两个核心配置文件读取失败仍然中止整个命令
+// (没有它们诊断包就没有意义),其余来源都是"能采多少算多少":日志文件缺失就跳过,
+// sysreport 采集失败就把错误信息本身写进对应的 txt,不让单个来源的失败拖累其余
+// 已经采集到的有用信息。
 func runDiag() {
-	// Phase 1 最小可用版本:只打包脱敏后的配置。
-	// winsw 日志、guard.log、服务状态、计划任务历史、Defender 状态留给 Phase 2
-	// (这些采集逻辑本来就要跟 Phase 2 的计划任务/Defender 代码写在一起)。
 	ncData, err := os.ReadFile(netclientDir + "netclient.json")
 	if err != nil {
 		fmt.Println("diag error reading netclient.json:", err)
@@ -120,21 +133,51 @@ func runDiag() {
 		os.Exit(1)
 	}
 
+	sources := []diag.Source{
+		{Name: "config-summary/netclient.json", Data: cleanNC},
+		{Name: "config-summary/servers.json", Data: cleanSrv},
+	}
+
+	for name, path := range map[string]string{
+		"winsw.out.log": netclientDir + `logs\winsw.out.log`,
+		"winsw.err.log": netclientDir + `logs\winsw.err.log`,
+		"guard.log":     guardDir + "guard.log",
+	} {
+		if data, err := os.ReadFile(path); err == nil {
+			sources = append(sources, diag.Source{Name: name, Data: data})
+		}
+	}
+
+	sources = append(sources,
+		collectSysreportSource("service-status.txt", "service status", sysreport.ServiceStatus),
+		collectSysreportSource("scheduled-tasks.txt", "scheduled tasks status", sysreport.ScheduledTasksStatus),
+		collectSysreportSource("defender-status.txt", "Defender status", sysreport.DefenderStatus),
+		collectSysreportSource("system-info.txt", "system info", func() (string, error) { return sysreport.SystemInfo(guardVersion) }),
+	)
+
 	home, err := os.UserHomeDir()
 	if err != nil {
 		fmt.Println("diag error resolving home directory:", err)
 		os.Exit(1)
 	}
-	outPath := home + `\Desktop\netclient-diag.zip`
-	err = diag.Bundle([]diag.Source{
-		{Name: "config-summary/netclient.json", Data: cleanNC},
-		{Name: "config-summary/servers.json", Data: cleanSrv},
-	}, outPath)
-	if err != nil {
+	outPath := home + `\Desktop\netclient-diag-` + time.Now().Format("20060102-150405") + `.zip`
+	if err := diag.Bundle(sources, outPath); err != nil {
 		fmt.Println("diag error writing bundle:", err)
 		os.Exit(1)
 	}
 	fmt.Println("diag bundle written to", outPath)
+}
+
+// collectSysreportSource 跑一个 sysreport 采集函数,失败时不让整个 diag 命令失败——
+// 把错误信息本身写进同一个文件名的内容里,这样诊断包里 7 类文件名永远齐全,只是
+// 采集失败的那部分内容是错误说明而不是真实数据,方便使用者一眼看出"这块没采到"
+// 而不是「这个文件为什么不见了」。
+func collectSysreportSource(name, label string, collect func() (string, error)) diag.Source {
+	content, err := collect()
+	if err != nil {
+		return diag.Source{Name: name, Data: []byte("error collecting " + label + ": " + err.Error())}
+	}
+	return diag.Source{Name: name, Data: []byte(content)}
 }
 
 // runInstall 依次执行:自提权检查 → 复制自身到安装目录 → 注册计划任务 →
