@@ -1,6 +1,5 @@
 //go:build !windows
 
-// Package defenderexcl 管理 Windows Defender 的排除路径列表。
 package defenderexcl
 
 import "errors"
