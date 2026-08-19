@@ -1,6 +1,9 @@
 package trayui
 
-import "testing"
+import (
+	"strings"
+	"testing"
+)
 
 func TestParseDiagPath(t *testing.T) {
 	cases := []struct {
@@ -27,5 +30,25 @@ func TestParseDiagPath(t *testing.T) {
 				t.Errorf("parseDiagPath(%q) = %q, want %q", c.output, got, c.want)
 			}
 		})
+	}
+}
+
+// TestSetupNetclientResult_EmptyOutputOnFailureGetsLogHint 覆盖"提权 relaunch 之后
+// 看不到详细输出"这个已知信息缺口的兜底提示:exePath 指向一个不存在的可执行文件,
+// 让 runExeCommand 必然失败且 Output 为空(既没有 stdout 也没有 stderr 可捕获),
+// 这时 setupNetclientResult 应该把 Output 替换成指向 install.log 的说明,而不是
+// 留一个空字符串给用户看。
+func TestSetupNetclientResult_EmptyOutputOnFailureGetsLogHint(t *testing.T) {
+	const installLogPath = `C:\ProgramData\netclient-guard\install.log`
+	result := setupNetclientResult("/nonexistent/netclient-guard-does-not-exist", installLogPath, "some-token")
+
+	if result.Success {
+		t.Fatalf("setupNetclientResult() Success = true, want false (exePath does not exist)")
+	}
+	if result.Output == "" {
+		t.Fatalf("setupNetclientResult() Output is empty, want a fallback hint")
+	}
+	if !strings.Contains(result.Output, installLogPath) {
+		t.Errorf("setupNetclientResult() Output = %q, want it to mention %q", result.Output, installLogPath)
 	}
 }

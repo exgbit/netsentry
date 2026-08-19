@@ -58,7 +58,7 @@ func bindPanel(w webview2.WebView, cfg PanelConfig) {
 		return Collect(cfg.NetclientDir, cfg.BackupDir, cfg.Svc)
 	})
 	w.Bind("setupNetclient", func(token string) ActionResult {
-		return runExeCommand(cfg.ExePath, "setup-netclient", "-t", token)
+		return setupNetclientResult(cfg.ExePath, cfg.InstallLogPath, token)
 	})
 	w.Bind("backupNow", func() ActionResult {
 		return runExeCommand(cfg.ExePath, "backup")

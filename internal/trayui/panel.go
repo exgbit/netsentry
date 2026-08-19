@@ -7,10 +7,11 @@ import (
 
 // PanelConfig 是面板需要的全部依赖,由 main.go 组装后传给 ShowPanel。
 type PanelConfig struct {
-	ExePath      string // 已安装的 netclient-guard.exe 路径,面板里所有需要跑子命令的操作都 shell 到这个路径
-	NetclientDir string
-	BackupDir    string
-	Svc          interface{ IsRunning() (bool, error) }
+	ExePath        string // 已安装的 netclient-guard.exe 路径,面板里所有需要跑子命令的操作都 shell 到这个路径
+	NetclientDir   string
+	BackupDir      string
+	InstallLogPath string // guardDir + "install.log",setupNetclient 失败且没有可展示输出时,指引用户去看这个文件
+	Svc            interface{ IsRunning() (bool, error) }
 }
 
 // ActionResult 是面板按钮触发的子命令操作(backupNow/repairNow/generateDiag/
@@ -29,6 +30,23 @@ type ActionResult struct {
 func runExeCommand(exePath string, args ...string) ActionResult {
 	out, err := exec.Command(exePath, args...).CombinedOutput()
 	return ActionResult{Success: err == nil, Output: strings.TrimSpace(string(out))}
+}
+
+// setupNetclientResult 跑一次 `<exePath> setup-netclient -t <token>`。这个子命令
+// 自己会走 ensureElevated() -> elevate.RelaunchElevated,真正的安装/加入网络过程
+// 发生在 -Verb RunAs 拉起的另一个提权进程里——这里 CombinedOutput() 捕获到的只是
+// 包装用的 powershell.exe 自己的输出(通常是空的),看不到那个真正执行安装的进程的
+// stdout。退出码依然能如实透传(RelaunchElevated 的文档注释里说明过),所以
+// Success 是准的,但失败时 Output 经常是空字符串,面板上看起来就是一句干巴巴的
+// "失败"、没有任何原因。这里在"失败且没有任何输出"时补一句指引,指向
+// doInstall/doSetupNetclient 已经在写的 install.log——好过什么都不说。
+func setupNetclientResult(exePath, installLogPath, token string) ActionResult {
+	result := runExeCommand(exePath, "setup-netclient", "-t", token)
+	if !result.Success && result.Output == "" {
+		result.Output = "未捕获到详细输出(安装过程发生在提权后的独立进程里)。" +
+			"请查看 " + installLogPath + " 了解具体失败原因。"
+	}
+	return result
 }
 
 // generateDiag 跑一次 `<exePath> diag`,成功后从输出里解析出生成的 zip 路径,

@@ -138,10 +138,11 @@ func onTrayReady() {
 	restartItem := systray.AddMenuItem("重启托盘", "重新拉起一个托盘进程(面板卡死等极端情况的兜底手段)")
 
 	panelCfg := trayui.PanelConfig{
-		ExePath:      installedExePath(),
-		NetclientDir: netclientDir,
-		BackupDir:    backupDir(),
-		Svc:          svc,
+		ExePath:        installedExePath(),
+		NetclientDir:   netclientDir,
+		BackupDir:      backupDir(),
+		InstallLogPath: installLogPath(),
+		Svc:            svc,
 	}
 
 	go func() {
