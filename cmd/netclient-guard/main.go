@@ -9,9 +9,12 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"strings"
 	"time"
+
+	"github.com/getlantern/systray"
 
 	"netclient-guard/internal/autostart"
 	"netclient-guard/internal/backup"
@@ -22,6 +25,7 @@ import (
 	"netclient-guard/internal/netclientinstall"
 	"netclient-guard/internal/schedtask"
 	"netclient-guard/internal/sysreport"
+	"netclient-guard/internal/trayui"
 	"netclient-guard/internal/watch"
 	"netclient-guard/internal/winsvc"
 )
@@ -38,7 +42,7 @@ func installedExePath() string { return guardDir + "netclient-guard.exe" }
 
 func main() {
 	if len(os.Args) < 2 {
-		fmt.Println("usage: netclient-guard <backup|watch|diag|install|uninstall|setup-netclient>")
+		fmt.Println("usage: netclient-guard <backup|watch|diag|install|uninstall|setup-netclient|tray>")
 		os.Exit(1)
 	}
 	switch os.Args[1] {
@@ -54,6 +58,8 @@ func main() {
 		runUninstall()
 	case "setup-netclient":
 		runSetupNetclient()
+	case "tray":
+		runTray()
 	default:
 		fmt.Println("unknown command:", os.Args[1])
 		os.Exit(1)
@@ -99,6 +105,72 @@ func runWatch() {
 		os.Exit(1)
 	}
 	fmt.Println("watch:", result.Action, "-", result.Detail)
+}
+
+// runTray 启动托盘图标的原生事件循环,阻塞到 systray.Quit() 被调用为止。
+func runTray() {
+	systray.Run(onTrayReady, onTrayExit)
+}
+
+// onTrayReady 设置初始图标、注册右键菜单("退出"/"重启托盘"),并起一个
+// 30 秒 ticker 在后台循环刷新图标颜色(对应设计文档"图标状态每 30 秒刷新一次")。
+//
+// TODO(9c): 计划要求"左键点击弹出面板",但 getlantern/systray v1.2.2 的 Windows
+// 实现里左键和右键在原生层面(wndProc 的 WM_LBUTTONUP/WM_RBUTTONUP 分支)都只会
+// 触发同一个 showMenu(),没有单独的 SetOnClick/IMenu 之类的 API 能把两者区分开。
+// 9c 实现面板时要么在下面这个右键菜单里加一项"打开面板",要么换一个支持独立左键
+// 回调的 systray 版本/fork。
+func onTrayReady() {
+	svc := winsvc.SCController{Name: "netclient", LogPath: netclientDir + `logs\winsw.out.log`}
+
+	refreshIcon := func() {
+		status, err := trayui.Collect(netclientDir, backupDir(), svc)
+		if err != nil {
+			// Collect 失败(比如 netclient.json 都读不到)按"不健康"处理,不让托盘卡死
+			systray.SetIcon(trayui.IconFor(false))
+			return
+		}
+		systray.SetIcon(trayui.IconFor(status.Healthy))
+	}
+	refreshIcon()
+
+	quitItem := systray.AddMenuItem("退出", "退出 netclient-guard 托盘")
+	restartItem := systray.AddMenuItem("重启托盘", "重新拉起一个托盘进程(面板卡死等极端情况的兜底手段)")
+
+	go func() {
+		ticker := time.NewTicker(30 * time.Second)
+		defer ticker.Stop()
+		for range ticker.C {
+			refreshIcon()
+		}
+	}()
+
+	go func() {
+		for {
+			select {
+			case <-quitItem.ClickedCh:
+				systray.Quit()
+				return
+			case <-restartItem.ClickedCh:
+				restartTray()
+				return
+			}
+		}
+	}()
+}
+
+func onTrayExit() {}
+
+// restartTray 拉起一个新的 tray 进程,再让当前进程退出——处理面板卡死等
+// 极端情况的兜底手段。新进程启动失败也照常退出当前进程,不重试。
+func restartTray() {
+	exePath, err := os.Executable()
+	if err != nil {
+		fmt.Println("restart tray: resolve current executable path failed:", err)
+	} else if err := exec.Command(exePath, "tray").Start(); err != nil {
+		fmt.Println("restart tray: start new process failed:", err)
+	}
+	systray.Quit()
 }
 
 // runDiag 收集设计文档要求的 7 类诊断信息,打包成一个带时间戳的 zip:
