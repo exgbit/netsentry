@@ -94,3 +94,40 @@ func TestAllTaskNames(t *testing.T) {
 		}
 	}
 }
+
+func TestIsTaskNotFoundOutput(t *testing.T) {
+	cases := []struct {
+		name   string
+		output string
+		want   bool
+	}{
+		{
+			name:   "英文文案",
+			output: "ERROR: The system cannot find the file specified.",
+			want:   true,
+		},
+		{
+			name:   "中文文案",
+			output: "错误: 系统找不到指定的文件。",
+			want:   true,
+		},
+		{
+			name:   "真机实测输出(简体中文, schtasks /Delete /TN 一个不存在的任务名 /F)",
+			output: "错误: 系统找不到指定的文件。\n",
+			want:   true,
+		},
+		{
+			name:   "无关失败不应误判为任务不存在",
+			output: "ERROR: Access is denied.",
+			want:   false,
+		},
+	}
+
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			if got := isTaskNotFoundOutput(c.output); got != c.want {
+				t.Errorf("isTaskNotFoundOutput(%q) = %v, want %v", c.output, got, c.want)
+			}
+		})
+	}
+}

@@ -2,7 +2,10 @@
 // 用来注册 Windows 计划任务。实际执行 schtasks.exe 的逻辑不在本文件中。
 package schedtask
 
-import "fmt"
+import (
+	"fmt"
+	"strings"
+)
 
 // BackupTaskArgs 构造 schtasks /Create 用来注册"每 30 分钟跑一次 backup"任务的参数。
 func BackupTaskArgs(exePath string) []string {
@@ -72,12 +75,32 @@ func ResumeTriggerTaskXML(exePath string) string {
 	return fmt.Sprintf(resumeTriggerTaskXMLTemplate, exePath)
 }
 
+// resumeTaskName 是"系统从睡眠唤醒时跑一次 watch"任务的名字。单独提出这个常量,
+// 是因为它不光在 AllTaskNames() 里出现,register_windows.go 的 /XML 注册流程也要用到
+// 同一个任务名——避免两处各写一份字面量导致改名时漏改、留下孤儿任务。
+const resumeTaskName = "NetclientGuardWatchOnResume"
+
 // AllTaskNames 返回本工具注册的全部计划任务名,uninstall 时用来逐个删除。
 func AllTaskNames() []string {
 	return []string{
 		"NetclientGuardBackup",
 		"NetclientGuardWatch",
 		"NetclientGuardWatchOnStart",
-		"NetclientGuardWatchOnResume",
+		resumeTaskName,
 	}
+}
+
+// isTaskNotFoundOutput 判断 schtasks /Delete 的失败输出是不是"任务本来就不存在"。
+//
+// 已在真实 Windows 11(简体中文)机器上实测确认:
+//
+//	schtasks /Delete /TN NetclientGuardDoesNotExistTest12345 /F
+//	=> 错误: 系统找不到指定的文件。(exit code 1)
+//
+// 英文系统下对应文案是 "ERROR: The system cannot find the file specified."。团队机器
+// 可能是英文或中文 locale,所以两种子串都匹配;中文只匹配核心短语"找不到指定的文件",
+// 不含"错误:"前缀,避免因标点/前缀差异漏判。匹配不上的失败仍会正常上报,不会被静默吞掉。
+func isTaskNotFoundOutput(output string) bool {
+	return strings.Contains(output, "cannot find the file specified") ||
+		strings.Contains(output, "找不到指定的文件")
 }
