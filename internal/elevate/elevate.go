@@ -15,8 +15,13 @@ import (
 // 所以不需要特别处理"完全没有参数"这种情况——但为了这个纯函数本身的健壮性,
 // args 为空时仍然正确地省略掉 -ArgumentList,而不是传一个空字符串参数
 // (空字符串参数和"完全没有参数"对被启动的程序来说是不同的)。
+//
+// 用 -PassThru 拿到 Start-Process 返回的进程对象,再用 `exit $p.ExitCode` 让包装用的
+// powershell.exe 自身以跟提权子进程相同的退出码退出——Start-Process -Wait 本身不会把
+// 子进程的退出码透传给 powershell.exe 自己的退出码,不显式做这一步的话,提权子进程
+// 内部失败(比如中途 os.Exit(1))在发起提权的这一端会被误判成成功。
 func relaunchCommand(exePath string, args []string) string {
-	cmd := fmt.Sprintf("Start-Process -FilePath '%s'", exePath)
+	cmd := fmt.Sprintf("$p = Start-Process -FilePath '%s'", exePath)
 	if len(args) > 0 {
 		quoted := make([]string, len(args))
 		for i, a := range args {
@@ -24,6 +29,6 @@ func relaunchCommand(exePath string, args []string) string {
 		}
 		cmd += " -ArgumentList " + strings.Join(quoted, ",")
 	}
-	cmd += " -Verb RunAs -Wait"
+	cmd += " -Verb RunAs -Wait -PassThru; exit $p.ExitCode"
 	return cmd
 }

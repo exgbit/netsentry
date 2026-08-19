@@ -66,7 +66,11 @@ func ensureElevated() {
 		return
 	}
 	if err := elevate.RelaunchElevated(os.Args[1:]); err != nil {
-		fmt.Println("elevate relaunch error:", err)
+		// 这个 error 既可能是"UAC 提权本身没能发起"(比如用户点了拒绝),
+		// 也可能是"提权进程本身跑到一半失败退出"——见 elevate.RelaunchElevated
+		// 的文档注释,两种情况区分不开也不强求,给出的错误信息已经足够明确
+		// 表明整个操作没有成功。
+		fmt.Println("elevated run failed (UAC declined, or the elevated process itself failed):", err)
 		os.Exit(1)
 	}
 	os.Exit(0)
@@ -135,8 +139,9 @@ func runDiag() {
 
 // runInstall 依次执行:自提权检查 → 复制自身到安装目录 → 注册计划任务 →
 // 添加 Defender 排除 → (如果 netclient 已装好)建立备份基线 → 注册开机自启。
-// 除了"复制自身"和"解析可执行文件路径"失败会直接中止,其余每一步失败都只记一条
-// WARN 日志、继续跑完剩下的步骤——尽量把能装的都装上。
+// "复制自身"失败会直接中止安装(见 copySelfToInstallDir 的文档注释——不能拿一个
+// 不持久的路径去注册计划任务/开机自启);除此之外,其余每一步失败都只记一条 WARN
+// 日志、继续跑完剩下的步骤——尽量把能装的都装上。
 func runInstall() {
 	ensureElevated()
 
@@ -149,15 +154,11 @@ func runInstall() {
 
 	exePath, err := copySelfToInstallDir()
 	if err != nil {
-		log("WARN", fmt.Sprintf("copy executable to %s failed: %v", installedExePath(), err))
-		exePath, err = os.Executable()
-		if err != nil {
-			fmt.Println("install error: cannot resolve current executable path:", err)
-			os.Exit(1)
-		}
-	} else {
-		log("INFO", "copied executable to "+exePath)
+		log("ERROR", fmt.Sprintf("copy executable to %s failed: %v", installedExePath(), err))
+		fmt.Println("install error: cannot copy executable to install location, aborting")
+		os.Exit(1)
 	}
+	log("INFO", "copied executable to "+exePath)
 
 	warnings := 0
 
@@ -203,7 +204,14 @@ func runInstall() {
 
 // copySelfToInstallDir 把当前运行的可执行文件复制到 guardDir 下的
 // netclient-guard.exe(已经是从这个路径运行时跳过复制,避免用同一个正在运行的
-// exe 覆盖自身触发共享冲突)。返回复制后(或本来就在)的可执行文件路径。
+// exe 覆盖自身触发共享冲突;这种情况视为成功,不是错误)。返回复制后(或本来
+// 就在)的可执行文件路径。
+//
+// 调用方(runInstall)在这里返回非 nil error 时必须直接中止安装,不能退回去
+// 用 os.Executable() 的原始路径继续跑:当前运行的 exe 完全可能是从下载目录、
+// 临时解压目录或者 U 盘之类的非持久位置启动的——如果拿这种路径去注册计划任务/
+// 开机自启,装完看起来是成功的,但一重启或者那个临时位置一消失(U 盘拔了、
+// temp 目录被清理)整套保护机制就悄无声息地失效了,比直接告诉用户装失败更糟。
 func copySelfToInstallDir() (string, error) {
 	src, err := os.Executable()
 	if err != nil {
