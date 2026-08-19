@@ -38,6 +38,7 @@ const (
 
 func backupDir() string        { return guardDir + `backup\` }
 func installLogPath() string   { return guardDir + "install.log" }
+func guardLogPath() string     { return guardDir + "guard.log" }
 func installedExePath() string { return guardDir + "netclient-guard.exe" }
 
 func main() {
@@ -91,9 +92,11 @@ func ensureElevated() {
 func runBackup() {
 	outcome, err := backup.Run(netclientDir, backupDir())
 	if err != nil {
+		_ = guardlog.Append(guardLogPath(), "ERROR", "backup: "+err.Error())
 		fmt.Println("backup error:", err)
 		os.Exit(1)
 	}
+	_ = guardlog.Append(guardLogPath(), "INFO", "backup: "+outcome.String())
 	fmt.Println("backup:", outcome)
 }
 
@@ -101,9 +104,11 @@ func runWatch() {
 	svc := winsvc.SCController{Name: "netclient", LogPath: netclientDir + `logs\winsw.out.log`}
 	result, err := watch.Run(netclientDir, backupDir(), svc)
 	if err != nil {
+		_ = guardlog.Append(guardLogPath(), "ALERT", "watch: "+err.Error())
 		fmt.Println("watch ALERT:", err)
 		os.Exit(1)
 	}
+	_ = guardlog.Append(guardLogPath(), "INFO", fmt.Sprintf("watch: %s - %s", result.Action, result.Detail))
 	fmt.Println("watch:", result.Action, "-", result.Detail)
 }
 
