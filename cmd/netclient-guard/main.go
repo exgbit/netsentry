@@ -19,6 +19,7 @@ import (
 	"netclient-guard/internal/diag"
 	"netclient-guard/internal/elevate"
 	"netclient-guard/internal/guardlog"
+	"netclient-guard/internal/netclientinstall"
 	"netclient-guard/internal/schedtask"
 	"netclient-guard/internal/sysreport"
 	"netclient-guard/internal/watch"
@@ -37,7 +38,7 @@ func installedExePath() string { return guardDir + "netclient-guard.exe" }
 
 func main() {
 	if len(os.Args) < 2 {
-		fmt.Println("usage: netclient-guard <backup|watch|diag|install|uninstall>")
+		fmt.Println("usage: netclient-guard <backup|watch|diag|install|uninstall|setup-netclient>")
 		os.Exit(1)
 	}
 	switch os.Args[1] {
@@ -51,6 +52,8 @@ func main() {
 		runInstall()
 	case "uninstall":
 		runUninstall()
+	case "setup-netclient":
+		runSetupNetclient()
 	default:
 		fmt.Println("unknown command:", os.Args[1])
 		os.Exit(1)
@@ -180,14 +183,22 @@ func collectSysreportSource(name, label string, collect func() (string, error)) 
 	return diag.Source{Name: name, Data: []byte(content)}
 }
 
-// runInstall 依次执行:自提权检查 → 复制自身到安装目录 → 注册计划任务 →
-// 添加 Defender 排除 → (如果 netclient 已装好)建立备份基线 → 注册开机自启。
+// runInstall 依次执行:自提权检查 → doInstall 的实际安装步骤。
+func runInstall() {
+	ensureElevated()
+	doInstall()
+}
+
+// doInstall 依次执行:复制自身到安装目录 → 注册计划任务 → 添加 Defender 排除 →
+// (如果 netclient 已装好)建立备份基线 → 注册开机自启。
 // "复制自身"失败会直接中止安装(见 copySelfToInstallDir 的文档注释——不能拿一个
 // 不持久的路径去注册计划任务/开机自启);除此之外,其余每一步失败都只记一条 WARN
 // 日志、继续跑完剩下的步骤——尽量把能装的都装上。
-func runInstall() {
-	ensureElevated()
-
+//
+// 不含自提权检查:调用方要么自己是已经提权过的 runInstall,要么是
+// setup-netclient(已经在下载/安装/加入网络之前做过一次 ensureElevated,不需要
+// 再触发一次 UAC)。
+func doInstall() {
 	log := func(level, message string) {
 		if err := guardlog.Append(installLogPath(), level, message); err != nil {
 			fmt.Println("install.log write error:", err)
@@ -351,4 +362,41 @@ func runUninstall() {
 		os.Exit(1)
 	}
 	fmt.Println("uninstall: done, purged", guardDir)
+}
+
+// tokenFlag 在参数列表里查找 -t 后面跟的值(enrollment token)。找不到 -t 或者
+// -t 后面没有值,返回空字符串和 false。
+func tokenFlag(args []string) (string, bool) {
+	for i, a := range args {
+		if a == "-t" && i+1 < len(args) {
+			return args[i+1], true
+		}
+	}
+	return "", false
+}
+
+// runSetupNetclient 依次执行:自提权检查 → 下载/安装/加入网络(netclientinstall.Run)
+// → 联动装 guard(doInstall,复用 Task 6 的安装逻辑,不重复触发 UAC)→ 建立备份基线。
+func runSetupNetclient() {
+	ensureElevated()
+
+	token, ok := tokenFlag(os.Args[2:])
+	if !ok {
+		fmt.Println("usage: netclient-guard setup-netclient -t <token>")
+		os.Exit(1)
+	}
+
+	if err := netclientinstall.Run(token); err != nil {
+		fmt.Println("setup-netclient error:", err)
+		os.Exit(1)
+	}
+
+	doInstall()
+
+	outcome, err := backup.Run(netclientDir, backupDir())
+	if err != nil {
+		fmt.Println("setup-netclient: baseline backup failed:", err)
+		os.Exit(1)
+	}
+	fmt.Println("setup-netclient: completed,", outcome)
 }
