@@ -91,8 +91,8 @@ func IsBrokerConnected(logTail []byte) bool {
 }
 
 const (
-	defaultHealthCheckAttempts = 2
-	defaultHealthCheckTimeout  = 45 * time.Second
+	defaultHealthCheckAttempts = 3
+	defaultHealthCheckTimeout  = 60 * time.Second
 	defaultHealthCheckInterval = 3 * time.Second
 )
 
