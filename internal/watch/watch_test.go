@@ -69,6 +69,40 @@ func TestRun_RestoresFromBackupWhenInconsistent(t *testing.T) {
 	}
 }
 
+func TestRun_LeavesServiceStoppedOnPartialRestoreFailure(t *testing.T) {
+	netclientDir := t.TempDir()
+	backupDir := filepath.Join(t.TempDir(), "backup")
+	os.MkdirAll(backupDir, 0o755)
+
+	mustWrite(t, filepath.Join(netclientDir, "netclient.json"), `{"id":"broken"}`)
+	mustWrite(t, filepath.Join(netclientDir, "servers.json"), `{"tomtoc.cn":{"mqid":"good","name":"tomtoc.cn"}}`)
+	mustWrite(t, filepath.Join(backupDir, "netclient.json.good"), `{"id":"good"}`)
+	// servers.json.good 是一个目录而不是文件,让 copyOverwrite 里的 os.ReadFile 在复制第二个
+	// 文件时报错,模拟 netclient.json 已恢复、servers.json 恢复失败的部分恢复场景。
+	if err := os.MkdirAll(filepath.Join(backupDir, "servers.json.good"), 0o755); err != nil {
+		t.Fatalf("mkdir servers.json.good: %v", err)
+	}
+
+	svc := &fakeService{running: true}
+	result, err := Run(netclientDir, backupDir, svc)
+	if err == nil {
+		t.Fatalf("expected error from failed servers.json restore, got nil (result=%+v)", result)
+	}
+	if svc.startCalls != 0 {
+		t.Errorf("service must not be started against a half-restored config, got startCalls=%d", svc.startCalls)
+	}
+	if svc.stopCalls != 1 {
+		t.Errorf("expected exactly one stop call, got %d", svc.stopCalls)
+	}
+	restored, readErr := os.ReadFile(filepath.Join(netclientDir, "netclient.json"))
+	if readErr != nil {
+		t.Fatalf("read netclient.json: %v", readErr)
+	}
+	if string(restored) != `{"id":"good"}` {
+		t.Errorf("netclient.json should have been overwritten with the backup's content before the servers.json copy failed, got %q", restored)
+	}
+}
+
 func TestRun_AlertsWhenNoBackupAvailable(t *testing.T) {
 	netclientDir := t.TempDir()
 	backupDir := filepath.Join(t.TempDir(), "backup")
