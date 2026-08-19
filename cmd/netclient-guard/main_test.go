@@ -21,6 +21,33 @@ func TestSamePath(t *testing.T) {
 	}
 }
 
+func TestEntriesToDeleteExceptSelf(t *testing.T) {
+	cases := []struct {
+		name     string
+		names    []string
+		selfName string
+		want     []string
+	}{
+		{"不含自身", []string{"guard.log", "install.log", "backup"}, "netclient-guard.exe", []string{"guard.log", "install.log", "backup"}},
+		{"含自身", []string{"guard.log", "netclient-guard.exe", "backup"}, "netclient-guard.exe", []string{"guard.log", "backup"}},
+		{"自身大小写不同", []string{"NetClient-Guard.EXE", "backup"}, "netclient-guard.exe", []string{"backup"}},
+		{"只有自身", []string{"netclient-guard.exe"}, "netclient-guard.exe", []string{}},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			got := entriesToDeleteExceptSelf(c.names, c.selfName)
+			if len(got) != len(c.want) {
+				t.Fatalf("entriesToDeleteExceptSelf(%#v, %q) = %#v, want %#v", c.names, c.selfName, got, c.want)
+			}
+			for i := range got {
+				if got[i] != c.want[i] {
+					t.Errorf("entriesToDeleteExceptSelf(%#v, %q) = %#v, want %#v", c.names, c.selfName, got, c.want)
+				}
+			}
+		})
+	}
+}
+
 func TestHasPurgeFlag(t *testing.T) {
 	cases := []struct {
 		name string

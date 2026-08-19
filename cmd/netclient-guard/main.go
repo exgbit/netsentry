@@ -24,6 +24,7 @@ import (
 	"netclient-guard/internal/guardlog"
 	"netclient-guard/internal/netclientinstall"
 	"netclient-guard/internal/schedtask"
+	"netclient-guard/internal/selfcleanup"
 	"netclient-guard/internal/sysreport"
 	"netclient-guard/internal/trayui"
 	"netclient-guard/internal/watch"
@@ -446,11 +447,64 @@ func runUninstall() {
 	}
 
 	log("INFO", "uninstall complete, purging "+guardDir)
-	if err := os.RemoveAll(guardDir); err != nil {
+
+	exePath, err := os.Executable()
+	if err != nil {
 		fmt.Println("uninstall: purge of", guardDir, "failed:", err)
 		os.Exit(1)
 	}
-	fmt.Println("uninstall: done, purged", guardDir)
+
+	if !samePath(exePath, installedExePath()) {
+		// 当前运行的不是装在 guardDir 下的那个 exe(比如从下载目录跑的另一份
+		// 拷贝),guardDir 里没有正在被自己占用的文件,直接整个删掉即可。
+		if err := os.RemoveAll(guardDir); err != nil {
+			fmt.Println("uninstall: purge of", guardDir, "failed:", err)
+			os.Exit(1)
+		}
+		fmt.Println("uninstall: done, purged", guardDir)
+		return
+	}
+
+	// 当前运行的就是 guardDir 下那个正在被执行的 netclient-guard.exe——Windows
+	// 不允许删除正在运行的可执行文件镜像本身(unlinkat ... Access is denied)。
+	// 先删掉除它以外的一切,再交给一个独立于当前进程的 helper 进程,在当前进程
+	// 退出、释放对自身 exe 的文件句柄之后,异步删掉 exe 本身和(届时已经空了的)
+	// 目录。
+	entries, err := os.ReadDir(guardDir)
+	if err != nil {
+		fmt.Println("uninstall: purge of", guardDir, "failed:", err)
+		os.Exit(1)
+	}
+	names := make([]string, len(entries))
+	for i, e := range entries {
+		names[i] = e.Name()
+	}
+	for _, name := range entriesToDeleteExceptSelf(names, filepath.Base(installedExePath())) {
+		if err := os.RemoveAll(guardDir + name); err != nil {
+			fmt.Println("uninstall: purge of", guardDir, "failed:", err)
+			os.Exit(1)
+		}
+	}
+
+	if err := selfcleanup.SpawnDelayedRemoveAll(guardDir); err != nil {
+		fmt.Println("uninstall: purge of", guardDir, "failed:", err)
+		os.Exit(1)
+	}
+	fmt.Println("uninstall: done,", guardDir, "will finish being removed in the background shortly")
+}
+
+// entriesToDeleteExceptSelf 从 guardDir 下的条目名单里筛出除了 selfName(不区分
+// 大小写,即当前正在运行的可执行文件)之外都应该立即删除的条目——self 自身要
+// 留给 selfcleanup 的 helper 进程在当前进程退出之后异步删除。
+func entriesToDeleteExceptSelf(names []string, selfName string) []string {
+	keep := make([]string, 0, len(names))
+	for _, n := range names {
+		if strings.EqualFold(n, selfName) {
+			continue
+		}
+		keep = append(keep, n)
+	}
+	return keep
 }
 
 // tokenFlag 在参数列表里查找 -t 后面跟的值(enrollment token)。找不到 -t 或者
