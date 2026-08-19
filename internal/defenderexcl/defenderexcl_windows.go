@@ -34,7 +34,7 @@ func runMpPreference(cmdlet, path string) error {
 	cmd := fmt.Sprintf("%s -ExclusionPath '%s'", cmdlet, path)
 	out, err := exec.Command("powershell.exe", "-NoProfile", "-Command", cmd).CombinedOutput()
 	if err != nil {
-		return fmt.Errorf("powershell %s: %w: %s", cmdlet, err, out)
+		return fmt.Errorf("powershell %s -ExclusionPath %q: %w: %s", cmdlet, path, err, out)
 	}
 	return nil
 }
