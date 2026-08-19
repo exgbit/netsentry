@@ -112,14 +112,13 @@ func runTray() {
 	systray.Run(onTrayReady, onTrayExit)
 }
 
-// onTrayReady 设置初始图标、注册右键菜单("退出"/"重启托盘"),并起一个
+// onTrayReady 设置初始图标、注册右键菜单("打开面板"/"退出"/"重启托盘"),并起一个
 // 30 秒 ticker 在后台循环刷新图标颜色(对应设计文档"图标状态每 30 秒刷新一次")。
 //
-// TODO(9c): 计划要求"左键点击弹出面板",但 getlantern/systray v1.2.2 的 Windows
-// 实现里左键和右键在原生层面(wndProc 的 WM_LBUTTONUP/WM_RBUTTONUP 分支)都只会
-// 触发同一个 showMenu(),没有单独的 SetOnClick/IMenu 之类的 API 能把两者区分开。
-// 9c 实现面板时要么在下面这个右键菜单里加一项"打开面板",要么换一个支持独立左键
-// 回调的 systray 版本/fork。
+// 计划原本要求"左键点击弹出面板",但 getlantern/systray v1.2.2 的 Windows 实现里
+// 左键和右键在原生层面(wndProc 的 WM_LBUTTONUP/WM_RBUTTONUP 分支)都只会触发同一个
+// showMenu(),没有单独的 SetOnClick/IMenu 之类的 API 能把两者区分开(9b 调研结论),
+// 所以改成右键菜单里加一项"打开面板",不做左键单独弹面板。
 func onTrayReady() {
 	svc := winsvc.SCController{Name: "netclient", LogPath: netclientDir + `logs\winsw.out.log`}
 
@@ -134,8 +133,16 @@ func onTrayReady() {
 	}
 	refreshIcon()
 
+	openPanelItem := systray.AddMenuItem("打开面板", "打开状态面板")
 	quitItem := systray.AddMenuItem("退出", "退出 netclient-guard 托盘")
 	restartItem := systray.AddMenuItem("重启托盘", "重新拉起一个托盘进程(面板卡死等极端情况的兜底手段)")
+
+	panelCfg := trayui.PanelConfig{
+		ExePath:      installedExePath(),
+		NetclientDir: netclientDir,
+		BackupDir:    backupDir(),
+		Svc:          svc,
+	}
 
 	go func() {
 		ticker := time.NewTicker(30 * time.Second)
@@ -148,6 +155,10 @@ func onTrayReady() {
 	go func() {
 		for {
 			select {
+			case <-openPanelItem.ClickedCh:
+				// 每次点击都新建一个面板窗口,自己的 goroutine 里跑自己的消息循环,
+				// 不阻塞这里继续响应"退出"/"重启托盘"。
+				go trayui.ShowPanel(panelCfg)
 			case <-quitItem.ClickedCh:
 				systray.Quit()
 				return

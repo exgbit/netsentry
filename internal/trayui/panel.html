@@ -1,0 +1,186 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<title>netclient-guard</title>
+<style>
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    font-family: "Microsoft YaHei", "Segoe UI", sans-serif;
+    font-size: 14px;
+    color: #222;
+    background: #f5f5f5;
+    padding: 16px;
+  }
+  h1 { font-size: 16px; margin: 0 0 12px; }
+  .status-block {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin-bottom: 12px;
+  }
+  .dot {
+    width: 14px;
+    height: 14px;
+    border-radius: 50%;
+    background: #999;
+    flex-shrink: 0;
+  }
+  .dot.healthy { background: #2e7d32; }
+  .dot.unhealthy { background: #c62828; }
+  .info-row { margin-bottom: 6px; word-break: break-all; }
+  .info-row .label { color: #666; margin-right: 4px; }
+  button {
+    display: block;
+    width: 100%;
+    padding: 8px;
+    margin-bottom: 8px;
+    border: 1px solid #ccc;
+    border-radius: 4px;
+    background: #fff;
+    cursor: pointer;
+    font-size: 13px;
+  }
+  button:hover { background: #eee; }
+  button:disabled { opacity: 0.6; cursor: default; }
+  input[type=text] {
+    width: 100%;
+    padding: 8px;
+    margin-bottom: 8px;
+    border: 1px solid #ccc;
+    border-radius: 4px;
+    font-size: 13px;
+  }
+  #output {
+    white-space: pre-wrap;
+    word-break: break-all;
+    background: #fff;
+    border: 1px solid #ddd;
+    border-radius: 4px;
+    padding: 8px;
+    font-size: 12px;
+    max-height: 140px;
+    overflow-y: auto;
+    margin-top: 8px;
+  }
+  .hidden { display: none; }
+</style>
+</head>
+<body>
+  <h1>netclient-guard</h1>
+
+  <div id="form-view">
+    <p>尚未加入网络,输入 enrollment token 完成安装:</p>
+    <input type="text" id="token-input" placeholder="enrollment token">
+    <button id="setup-btn">安装并加入网络</button>
+  </div>
+
+  <div id="dashboard-view" class="hidden">
+    <div class="status-block">
+      <span id="status-dot" class="dot"></span>
+      <span id="status-text"></span>
+    </div>
+    <div class="info-row"><span class="label">服务器:</span><span id="server-name"></span></div>
+    <div class="info-row"><span class="label">上次备份:</span><span id="last-backup"></span></div>
+    <div class="info-row"><span class="label">服务状态:</span><span id="service-status"></span></div>
+
+    <button id="backup-btn">立即备份</button>
+    <button id="repair-btn">立即修复</button>
+    <button id="ping-btn">测试连通性</button>
+    <button id="diag-btn">生成诊断包</button>
+    <button id="reconfigure-btn">重新配置</button>
+  </div>
+
+  <div id="output" class="hidden"></div>
+
+<script>
+  var formView = document.getElementById('form-view');
+  var dashView = document.getElementById('dashboard-view');
+  var outputEl = document.getElementById('output');
+  // 用户点了"重新配置"之后,在提交新 token 之前不能让每 3 秒一次的 getStatus
+  // 轮询把界面又刷回仪表盘(此时 netclient.json 通常还在,configured 仍是 true)。
+  var manualReconfigure = false;
+
+  function showOutput(text) {
+    outputEl.textContent = text;
+    outputEl.classList.remove('hidden');
+  }
+
+  function setButtonsDisabled(disabled) {
+    document.querySelectorAll('button').forEach(function (b) { b.disabled = disabled; });
+  }
+
+  // 跑一个耗时较长的 bridge 调用:按钮全部禁用防止重复点击,结果(不管成功
+  // 失败)都原样显示在输出区域——bridge 函数本身是同步阻塞返回最终结果的
+  // (对应计划里"不需要做成实时进度推送"),这里只是在等待期间给个提示文字。
+  function runAction(label, promise) {
+    setButtonsDisabled(true);
+    showOutput(label + ' 进行中…');
+    return promise.then(function (result) {
+      showOutput((result.success ? '[成功] ' : '[失败] ') + result.output);
+      return result;
+    }).catch(function (err) {
+      showOutput('[出错] ' + err);
+    }).finally(function () {
+      setButtonsDisabled(false);
+    });
+  }
+
+  document.getElementById('setup-btn').addEventListener('click', function () {
+    var token = document.getElementById('token-input').value.trim();
+    if (!token) { return; }
+    runAction('安装并加入网络', window.setupNetclient(token)).then(function () {
+      manualReconfigure = false;
+      refreshStatus();
+    });
+  });
+  document.getElementById('backup-btn').addEventListener('click', function () {
+    runAction('备份', window.backupNow());
+  });
+  document.getElementById('repair-btn').addEventListener('click', function () {
+    runAction('修复', window.repairNow());
+  });
+  document.getElementById('ping-btn').addEventListener('click', function () {
+    var ip = window.prompt('输入要测试连通性的 IP 地址:');
+    if (!ip) { return; }
+    runAction('测试连通性', window.testConnectivity(ip));
+  });
+  document.getElementById('diag-btn').addEventListener('click', function () {
+    runAction('生成诊断包', window.generateDiag());
+  });
+  document.getElementById('reconfigure-btn').addEventListener('click', function () {
+    manualReconfigure = true;
+    dashView.classList.add('hidden');
+    formView.classList.remove('hidden');
+  });
+
+  function applyStatus(status) {
+    if (manualReconfigure) { return; }
+    if (!status.configured) {
+      formView.classList.remove('hidden');
+      dashView.classList.add('hidden');
+      return;
+    }
+    formView.classList.add('hidden');
+    dashView.classList.remove('hidden');
+
+    var dot = document.getElementById('status-dot');
+    dot.className = 'dot ' + (status.healthy ? 'healthy' : 'unhealthy');
+    document.getElementById('status-text').textContent = status.healthy ? '健康' : '异常';
+    document.getElementById('server-name').textContent = status.serverName || '(无)';
+    document.getElementById('last-backup').textContent = status.lastBackup || '(无)';
+    document.getElementById('service-status').textContent = status.serviceStatus;
+  }
+
+  function refreshStatus() {
+    window.getStatus().then(applyStatus).catch(function (err) {
+      showOutput('[获取状态出错] ' + err);
+    });
+  }
+
+  refreshStatus();
+  setInterval(refreshStatus, 3000);
+</script>
+</body>
+</html>
