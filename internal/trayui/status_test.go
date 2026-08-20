@@ -136,6 +136,32 @@ func TestCollect_LastBackup_FromFile(t *testing.T) {
 	}
 }
 
+// TestCollect_ConfigReadError_StaysConfiguredNotHealthy 是真机踩过的坑:
+// netclient.json 存在但读取/解析这一下失败(比如被别的进程短暂占用——面板每 3
+// 秒轮询一次,撞上这种瞬时失败不是小概率事件),guardconfig.Load 会返回一个
+// 非 nil error;此时 Collect 不能把 Configured 报成 false,不然前端会把已经
+// 配置好的机器错误地打回"输入 token 安装"的表单,像是把配置清空了一样。
+func TestCollect_ConfigReadError_StaysConfiguredNotHealthy(t *testing.T) {
+	netclientDir := t.TempDir()
+	backupDir := t.TempDir()
+
+	// 文件存在,但内容不是合法 JSON——触发 guardconfig.Load 的解析错误分支
+	// (不是"文件不存在"那种被 guardconfig.Load 自己吞掉、不算错误的分支)。
+	mustWrite(t, filepath.Join(netclientDir, "netclient.json"), `{not valid json`)
+	mustWrite(t, filepath.Join(netclientDir, "servers.json"), `{"tomtoc.cn":{"mqid":"good","name":"tomtoc.cn"}}`)
+
+	got, err := Collect(netclientDir, backupDir, fakeService{running: true})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if !got.Configured {
+		t.Errorf("Configured = false, want true (file exists, only the read/parse failed)")
+	}
+	if got.Healthy {
+		t.Errorf("Healthy = true, want false (couldn't confirm consistency this round)")
+	}
+}
+
 func TestCollect_LastBackup_MissingIsEmpty(t *testing.T) {
 	netclientDir := t.TempDir()
 	backupDir := t.TempDir()

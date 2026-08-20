@@ -12,6 +12,11 @@ type PanelConfig struct {
 	BackupDir      string
 	InstallLogPath string // guardDir + "install.log",setupNetclient 失败且没有可展示输出时,指引用户去看这个文件
 	Svc            interface{ IsRunning() (bool, error) }
+	// ConnectivityTargets 是"测试连通性"按钮要 ping 的目标 IP 列表——这是内部
+	// 企业工具,网段是固定的,不需要每次都让用户自己输入 IP(真机测试发现
+	// window.prompt() 在 WebView2 里渲染很怪,而且对着一批不懂技术的同事来说
+	// "还要自己填 IP" 也是不必要的操作门槛)。在 main.go 里配置,不在面板里填。
+	ConnectivityTargets []string
 }
 
 // ActionResult 是面板按钮触发的子命令操作(backupNow/repairNow/generateDiag/
@@ -59,6 +64,33 @@ func generateDiag(exePath string) ActionResult {
 		}
 	}
 	return result
+}
+
+// testConnectivity 依次 ping 配置好的每个目标 IP(-n 3,和之前面板里手填 IP 时
+// 用的参数一样),把每个目标的结果拼在一起返回。任一目标 ping 通就算整体
+// Success——目的是"确认到内网至少还有一条路通",不是要求每个目标都必须通。
+// targets 为空(理论上不该发生,main.go 应该总是配好至少一个)时返回明确的
+// 错误说明,而不是静默地什么都不做。
+func testConnectivity(targets []string) ActionResult {
+	if len(targets) == 0 {
+		return ActionResult{Success: false, Output: "未配置测试目标 IP(联系管理员在 NetSentry 里配置 ConnectivityTargets)"}
+	}
+	var lines []string
+	anyOK := false
+	for _, ip := range targets {
+		out, err := exec.Command("ping.exe", "-n", "3", ip).CombinedOutput()
+		ok := err == nil
+		if ok {
+			anyOK = true
+		}
+		status := "失败"
+		if ok {
+			status = "成功"
+		}
+		lines = append(lines, ip+" — "+status)
+		lines = append(lines, strings.TrimSpace(string(out)))
+	}
+	return ActionResult{Success: anyOK, Output: strings.Join(lines, "\n")}
 }
 
 // parseDiagPath 从 `diag` 子命令的输出里取出 "diag bundle written to <path>"

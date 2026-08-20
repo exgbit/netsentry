@@ -22,11 +22,18 @@ type Status struct {
 
 // Collect 聚合 guardconfig.Load + 服务状态 + last-good.txt,得到当前状态。
 // svc 是 watch.ServiceController(复用 Phase 1 已有接口,不新造一个),方便测试用假实现。
+//
+// 真机踩过的坑:guardconfig.Load 对"文件不存在"不算错误(只是把 NetclientExists
+// 置 false),只有在文件存在但读取/解析真的失败时(比如被别的进程短暂占用—— 这个
+// 面板每 3 秒轮询一次 getStatus,撞上这种瞬时失败的概率不低)才会返回非 nil
+// error。最早的实现在这种情况下直接 `return Status{}, err`,Status{} 的零值
+// Configured 是 false——JS 侧会把这个当成"从没配置过",把仪表盘换成"输入 token
+// 安装"的表单,吓到已经配置好的用户以为整个配置被清空了。这里改成:只要
+// guardconfig.Load 报错(说明文件是存在的,只是读取这一下没成功),就认定
+// Configured 仍然是 true,只是这一轮状态不健康/未知,继续停留在仪表盘,不要
+// 因为一次瞬时读取失败就把界面切回安装表单。
 func Collect(netclientDir, backupDir string, svc interface{ IsRunning() (bool, error) }) (Status, error) {
-	load, err := guardconfig.Load(netclientDir)
-	if err != nil {
-		return Status{}, err
-	}
+	load, loadErr := guardconfig.Load(netclientDir)
 
 	running, svcErr := svc.IsRunning()
 	var serviceStatus string
@@ -43,6 +50,16 @@ func Collect(netclientDir, backupDir string, svc interface{ IsRunning() (bool, e
 	lastBackup := ""
 	if data, err := os.ReadFile(filepath.Join(backupDir, "last-good.txt")); err == nil {
 		lastBackup = string(data)
+	}
+
+	if loadErr != nil {
+		return Status{
+			Configured:    true,
+			Healthy:       false,
+			ServerName:    "",
+			LastBackup:    lastBackup,
+			ServiceStatus: serviceStatus,
+		}, nil
 	}
 
 	return Status{

@@ -37,6 +37,10 @@ const (
 	guardVersion = "1.0.0"
 )
 
+// connectivityTargets 是面板"测试连通性"按钮要 ping 的目标 IP——内部企业网络,
+// 网段固定,不需要让每个同事自己填 IP。在这里配置,改了要重新编译发布。
+var connectivityTargets = []string{"100.67.147.4"}
+
 func backupDir() string        { return guardDir + `backup\` }
 func installLogPath() string   { return guardDir + "install.log" }
 func guardLogPath() string     { return guardDir + "guard.log" }
@@ -180,11 +184,12 @@ func onTrayReady() {
 	restartItem := systray.AddMenuItem("重启托盘", "重新拉起一个托盘进程(面板卡死等极端情况的兜底手段)")
 
 	panelCfg := trayui.PanelConfig{
-		ExePath:        installedExePath(),
-		NetclientDir:   netclientDir,
-		BackupDir:      backupDir(),
-		InstallLogPath: installLogPath(),
-		Svc:            svc,
+		ExePath:             installedExePath(),
+		NetclientDir:        netclientDir,
+		BackupDir:           backupDir(),
+		InstallLogPath:      installLogPath(),
+		Svc:                 svc,
+		ConnectivityTargets: connectivityTargets,
 	}
 
 	go func() {

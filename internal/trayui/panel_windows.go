@@ -4,9 +4,7 @@ package trayui
 
 import (
 	_ "embed"
-	"os/exec"
 	"runtime"
-	"strings"
 
 	webview2 "github.com/jchv/go-webview2"
 )
@@ -70,9 +68,8 @@ func bindPanel(w webview2.WebView, cfg PanelConfig) {
 	w.Bind("repairNow", func() ActionResult {
 		return runExeCommand(cfg.ExePath, "watch")
 	})
-	w.Bind("testConnectivity", func(ip string) ActionResult {
-		out, err := exec.Command("ping.exe", "-n", "3", ip).CombinedOutput()
-		return ActionResult{Success: err == nil, Output: strings.TrimSpace(string(out))}
+	w.Bind("testConnectivity", func() ActionResult {
+		return testConnectivity(cfg.ConnectivityTargets)
 	})
 	w.Bind("generateDiag", func() ActionResult {
 		return generateDiag(cfg.ExePath)

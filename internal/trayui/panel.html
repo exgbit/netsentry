@@ -120,7 +120,14 @@
     overflow-y: auto;
     padding: 0 var(--sp-5) var(--sp-5);
     animation: rise 320ms cubic-bezier(.22,1,.36,1) both;
+    /* 面板是固定尺寸的原生弹窗,不是可以随便滚的网页——正常情况下内容应该
+       刚好放得下。overflow-y:auto 只是留一道安全网(万一诊断输出特别长之类
+       的边界情况),但常驻的滚动条本身看起来很"网页感",和原生小面板的
+       定位不符,真机反馈过这一点。滚动能力保留,只是不常驻显示滚动条轨道/
+       滑块外观。 */
+    scrollbar-width: none; /* Firefox */
   }
+  .body-scroll::-webkit-scrollbar { display: none; } /* WebView2 走 Chromium 内核 */
   @keyframes rise {
     from { opacity: 0; transform: translateY(6px); }
     to   { opacity: 1; transform: translateY(0); }
@@ -364,32 +371,10 @@
   .action-btn.ghost .action-icon { background: var(--ink-100); color: var(--ink-500); }
   .action-btn.ghost:hover:not(:disabled) { background: var(--ink-100); border-color: transparent; }
 
-  /* ============ 内联 IP 输入行(不用 window.prompt) ============ */
-  #ping-row {
-    display: flex;
-    gap: var(--sp-2);
-    padding: var(--sp-3);
-    margin-top: var(--sp-2);
-    background: var(--accent-50);
-    border: 1px solid var(--accent-100);
-    border-radius: var(--r-md);
-    animation: dropdown 180ms ease both;
-  }
   @keyframes dropdown {
     from { opacity: 0; transform: translateY(-4px); }
     to   { opacity: 1; transform: translateY(0); }
   }
-  #ping-row input { flex: 1; background: var(--card); }
-  #ping-confirm-btn {
-    flex: none;
-    padding: 0 14px;
-    font-size: 12.5px;
-    font-weight: 700;
-    color: #fff;
-    background: var(--accent-500);
-    border-radius: var(--r-sm);
-  }
-  #ping-confirm-btn:hover:not(:disabled) { background: var(--accent-600); }
 
   /* ============ 输出面板 ============ */
   #output-wrap { margin-top: var(--sp-4); }
@@ -475,11 +460,6 @@
         每 5 分钟自动检测一次,异常时自动修复并记录到本地日志
       </div>
 
-      <div id="ping-row" class="hidden">
-        <input type="text" id="ping-input" placeholder="输入要测试的 IP 地址">
-        <button id="ping-confirm-btn">确认</button>
-      </div>
-
       <div id="output-wrap" class="hidden">
         <div id="output"></div>
       </div>
@@ -537,18 +517,11 @@
   document.getElementById('repair-btn').addEventListener('click', function () {
     runAction('修复', window.repairNow());
   });
-  // window.prompt() 在 WebView2 里渲染出来会被限制在面板窗口的小尺寸内、挤压
-  // 变形,不是正常的系统对话框(真机实测发现),改成面板内联的输入框——点击
-  // "测试连通性"展开输入行,点击"确认"才真正发起 testConnectivity 调用。
+  // 企业内部工具,测试目标是固定网段,不需要每次都让人手填 IP(之前用
+  // window.prompt() 问 IP,一是 WebView2 里渲染很怪,二是对不懂技术的同事来说
+  // 也是不必要的操作门槛)——目标 IP 在 main.go 里配置好,点一下直接测。
   document.getElementById('ping-btn').addEventListener('click', function () {
-    document.getElementById('ping-row').classList.remove('hidden');
-    document.getElementById('ping-input').focus();
-  });
-  document.getElementById('ping-confirm-btn').addEventListener('click', function () {
-    var ip = document.getElementById('ping-input').value.trim();
-    if (!ip) { return; }
-    document.getElementById('ping-row').classList.add('hidden');
-    runAction('测试连通性', window.testConnectivity(ip));
+    runAction('测试连通性', window.testConnectivity());
   });
   document.getElementById('diag-btn').addEventListener('click', function () {
     runAction('生成诊断包', window.generateDiag());
