@@ -20,9 +20,9 @@ const netclientDir = `C:\Program Files (x86)\Netclient\`
 // (netclient 自己的 Windows 服务是靠 WinSW 包起来跑的,winsw.xml 是它的服务配置)。
 func ServiceStatus() (string, error) {
 	out, err := winexec.Hidden("sc.exe", "query", "netclient").CombinedOutput()
-	scSection := string(out)
+	scSection := winexec.DecodeConsoleOutput(out)
 	if err != nil {
-		scSection = fmt.Sprintf("sc.exe query netclient failed: %v\n%s", err, out)
+		scSection = fmt.Sprintf("sc.exe query netclient failed: %v\n%s", err, winexec.DecodeConsoleOutput(out))
 	}
 
 	var winswSection string
@@ -42,33 +42,38 @@ func ScheduledTasksStatus() (string, error) {
 	var report string
 	for _, name := range schedtask.AllTaskNames() {
 		out, err := winexec.Hidden("schtasks.exe", "/Query", "/TN", name, "/FO", "LIST", "/V").CombinedOutput()
-		section := string(out)
+		section := winexec.DecodeConsoleOutput(out)
 		if err != nil {
-			section = fmt.Sprintf("schtasks /Query /TN %s failed: %v\n%s", name, err, out)
+			section = fmt.Sprintf("schtasks /Query /TN %s failed: %v\n%s", name, err, winexec.DecodeConsoleOutput(out))
 		}
 		report += fmt.Sprintf("=== %s ===\n%s\n\n", name, section)
 	}
 	return report, nil
 }
 
-// DefenderStatus 返回 Windows Defender 的排除路径列表,加上和 Netclient 路径相关的
-// 威胁检测历史(用来排查"是不是 Defender 误报删了 netclient 文件")。
+// DefenderStatus 返回 Windows Defender 的排除路径列表,加上和 Netclient/NetSentry
+// 路径相关的威胁检测历史(用来排查"是不是 Defender 误报删了/拦了文件")。
+//
+// 威胁检测过滤条件之前只匹配 "Netclient",漏掉了 NetSentry 自己这两个 exe
+// (装在 C:\ProgramData\NetSentry\,路径里没有 "Netclient" 这个词)——真机上
+// "双击 netsentry-tray.exe 完全没反应"最可能的原因就是被 Defender 拦了/隔离了,
+// 之前的诊断包在这个过滤条件下看不出任何线索。
 func DefenderStatus() (string, error) {
 	exclOut, exclErr := winexec.Hidden("powershell.exe", "-NoProfile", "-Command",
 		"Get-MpPreference | Select-Object -ExpandProperty ExclusionPath").CombinedOutput()
-	exclSection := string(exclOut)
+	exclSection := winexec.DecodeConsoleOutput(exclOut)
 	if exclErr != nil {
-		exclSection = fmt.Sprintf("Get-MpPreference failed: %v\n%s", exclErr, exclOut)
+		exclSection = fmt.Sprintf("Get-MpPreference failed: %v\n%s", exclErr, winexec.DecodeConsoleOutput(exclOut))
 	}
 
 	threatOut, threatErr := winexec.Hidden("powershell.exe", "-NoProfile", "-Command",
-		"Get-MpThreatDetection | Where-Object { $_.Resources -like '*Netclient*' } | Format-List").CombinedOutput()
-	threatSection := string(threatOut)
+		"Get-MpThreatDetection | Where-Object { $_.Resources -like '*Netclient*' -or $_.Resources -like '*NetSentry*' } | Format-List").CombinedOutput()
+	threatSection := winexec.DecodeConsoleOutput(threatOut)
 	if threatErr != nil {
-		threatSection = fmt.Sprintf("Get-MpThreatDetection failed: %v\n%s", threatErr, threatOut)
+		threatSection = fmt.Sprintf("Get-MpThreatDetection failed: %v\n%s", threatErr, winexec.DecodeConsoleOutput(threatOut))
 	}
 
-	return fmt.Sprintf("=== Defender exclusion paths ===\n%s\n\n=== Threat detections matching \"Netclient\" ===\n%s",
+	return fmt.Sprintf("=== Defender exclusion paths ===\n%s\n\n=== Threat detections matching \"Netclient\" or \"NetSentry\" ===\n%s",
 		exclSection, threatSection), nil
 }
 
@@ -77,9 +82,9 @@ func DefenderStatus() (string, error) {
 func SystemInfo(guardVersion string) (string, error) {
 	osOut, osErr := winexec.Hidden("powershell.exe", "-NoProfile", "-Command",
 		"(Get-CimInstance Win32_OperatingSystem).Caption.Trim() + ' ' + (Get-CimInstance Win32_OperatingSystem).Version").CombinedOutput()
-	osVersion := string(osOut)
+	osVersion := winexec.DecodeConsoleOutput(osOut)
 	if osErr != nil {
-		osVersion = fmt.Sprintf("(could not determine Windows version: %v: %s)", osErr, osOut)
+		osVersion = fmt.Sprintf("(could not determine Windows version: %v: %s)", osErr, winexec.DecodeConsoleOutput(osOut))
 	}
 
 	netclientVersion := "(unknown)"

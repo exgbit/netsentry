@@ -9,18 +9,21 @@ import (
 )
 
 // Fix 检查 netmaker 接口的跃点数,发现低于 targetMetric 就调高到 targetMetric。
-// 接口不存在(netclient 还没装,或没有加入任何网络)时不算错误,原样跳过。
+// 接口不存在(netclient 还没装、没加入网络,或者刚 join 完接口还没来得及建立)
+// 时不算错误,原样跳过。
 //
-// -ErrorAction SilentlyContinue:接口不存在时 Get-NetIPInterface 默认会抛一个
-// 终止性错误,这里不希望"没装 netclient"被当成本函数的失败,所以吞掉这个错误、
-// 靠"输出是不是空"来判断接口存不存在。
+// 真机验证过一个反直觉的坑:接口不存在时,哪怕加了 -ErrorAction
+// SilentlyContinue 抑制了错误输出,包装用的 powershell.exe 进程本身依然会以
+// 退出码 1 结束(在 -Command 这种一次性脚本模式下,是否有 error record 写入过
+// 会影响进程退出码,和 -ErrorAction 有没有真的抑制住输出是两回事)。所以这里
+// 不能像别处那样把非 nil err 当成硬失败——用"有没有解析出数字"而不是退出码
+// 来判断接口是否存在,退出码本身不可靠。setup-netclient 里在 join 刚完成那一刻
+// 调用这个函数时,接口很可能还没建立好,这种情况下不该报 WARN 吓用户,后面
+// 常规巡检(watch)会在几分钟内自动重试补上。
 func Fix() (Result, error) {
-	queryOut, err := winexec.Hidden("powershell.exe", "-NoProfile", "-Command",
+	queryOut, _ := winexec.Hidden("powershell.exe", "-NoProfile", "-Command",
 		"Get-NetIPInterface -InterfaceAlias '"+interfaceAlias+"' -ErrorAction SilentlyContinue | Select-Object -ExpandProperty InterfaceMetric",
 	).CombinedOutput()
-	if err != nil {
-		return Result{}, fmt.Errorf("query %s interface metric: %w: %s", interfaceAlias, err, winexec.DecodeConsoleOutput(queryOut))
-	}
 
 	metrics := parseMetrics(winexec.DecodeConsoleOutput(queryOut))
 	if len(metrics) == 0 {

@@ -36,7 +36,7 @@ import (
 const (
 	netclientDir = `C:\Program Files (x86)\Netclient\`
 	guardDir     = `C:\ProgramData\NetSentry\`
-	guardVersion = "0.5.3"
+	guardVersion = "0.5.4"
 )
 
 func backupDir() string        { return guardDir + `backup\` }
@@ -400,6 +400,18 @@ func doInstall() {
 		log("INFO", "added Defender exclusion for "+netclientDir)
 	}
 
+	// NetSentry 自己这两个 exe(尤其是 netsentry-tray.exe:未签名、新编译、又是
+	// WebView2+网络+拉子进程这种典型会被启发式规则盯上的行为组合)之前只给
+	// netclient 的安装目录加了排除,guardDir 自己从来没排除过——真机诊断包
+	// 反馈过"双击 netsentry-tray.exe 完全没反应"的情况,Defender 静默拦截/
+	// 隔离是最可能的原因之一,补上这条排除。
+	if err := defenderexcl.Add(guardDir); err != nil {
+		log("WARN", "add Defender exclusion for guardDir failed: "+err.Error())
+		warnings++
+	} else {
+		log("INFO", "added Defender exclusion for "+guardDir)
+	}
+
 	// 只在 settings.json 不存在时写默认值,已存在就不碰——保护管理员已经手动
 	// 改过的连通性测试目标 IP 不会被重装/升级冲掉。
 	if err := settings.WriteDefaultIfMissing(settingsPath()); err != nil {
@@ -546,6 +558,12 @@ func runUninstall() {
 		log("WARN", "remove Defender exclusion failed: "+err.Error())
 	} else {
 		log("INFO", "removed Defender exclusion for "+netclientDir)
+	}
+
+	if err := defenderexcl.Remove(guardDir); err != nil {
+		log("WARN", "remove Defender exclusion for guardDir failed: "+err.Error())
+	} else {
+		log("INFO", "removed Defender exclusion for "+guardDir)
 	}
 
 	if err := autostart.Unregister(); err != nil {

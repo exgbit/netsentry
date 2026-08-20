@@ -13,6 +13,17 @@ type ChangelogEntry struct {
 // 不倒填之前没有版本号track的历史。以后每发一个新版本,在最前面加一条。
 var Changelog = []ChangelogEntry{
 	{
+		Version: "0.5.4",
+		Date:    "2026-08-20",
+		Notes: []string{
+			"修复:加入网络刚完成那一刻检查 netmaker 网卡跃点数会误报 WARN" +
+				"(接口还没建立好,PowerShell 在这种情况下退出码不可靠,不代表真的出错)",
+			"修复:诊断包里的系统信息/服务状态/计划任务状态,中文在部分系统上显示乱码",
+			"修复:Defender 排除路径之前只加了 netclient 的安装目录,没加 NetSentry 自己" +
+				"的安装目录,可能导致 netsentry-tray.exe 被静默拦截、双击没反应",
+		},
+	},
+	{
 		Version: "0.5.3",
 		Date:    "2026-08-20",
 		Notes: []string{
