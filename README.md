@@ -2,6 +2,8 @@
 
 Windows 后台工具,自动备份/恢复 [netclient](https://github.com/gravitl/netclient) 的身份配置,修复因 `netclient.json` 与 `servers.json` 不一致导致的启动崩溃(netclient 自身已知的一个自愈缺陷)。托盘图标常驻后台,配一个 WebView2 状态面板,给不熟悉命令行的同事也能自己动手修复常见故障。
 
+**下载编译好的 exe**:[Releases](../../releases/latest) —— `netsentry.exe` + `netsentry-tray.exe` 两个文件要放在同一目录下一起用,详见下方"安装 / 构建"。
+
 ## 界面
 
 | 仪表盘 | 设置 | 操作结果 |
