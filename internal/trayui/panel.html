@@ -110,7 +110,7 @@
   .brand-sub {
     font-size: 11.5px;
     font-weight: 500;
-    color: var(--ink-400);
+    color: var(--ink-500);
     margin-top: 1px;
   }
 
@@ -141,7 +141,7 @@
     font-weight: 700;
     letter-spacing: 0.07em;
     text-transform: uppercase;
-    color: var(--ink-400);
+    color: var(--ink-500);
     margin: 0 0 var(--sp-2) 2px;
   }
 
@@ -202,6 +202,15 @@
   }
   button:disabled { cursor: default; opacity: 0.55; }
   button:active:not(:disabled) { transform: scale(0.985); }
+  /* 键盘 Tab 导航到按钮/输入框时必须有清晰的可见反馈——上面 outline:none
+     只是关掉了默认的丑陋方框,不能没有替代方案,否则纯键盘操作时完全找不到
+     焦点在哪(真实的可用性缺陷,不只是美观问题)。只在键盘导航时显示
+     (:focus-visible),鼠标点击后不显示,避免视觉噪音。 */
+  button:focus-visible,
+  input[type=text]:focus-visible {
+    outline: 2.5px solid var(--accent-500);
+    outline-offset: 2px;
+  }
 
   .btn-primary {
     width: 100%;
@@ -218,7 +227,35 @@
   .btn-primary:hover:not(:disabled) { background: linear-gradient(155deg, var(--accent-600), var(--accent-700)); }
 
   /* ============ 已配置: 状态卡片 ============ */
-  #dashboard-view { padding-top: var(--sp-1); }
+  /* display:flex + min-height:100% + 页脚 margin-top:auto——健康稳态下没有
+     展开的 IP 输入行/输出面板时,内容撑不满固定 520px 高的窗口,底部会留一大片
+     空白,像窗口没调好尺寸。把页脚提示钉在可用空间底部,而不是简单加空白
+     div——顺便传达一个真实有用的信息(自动检测在后台跑着),不是纯粹为了
+     填空间而加内容。 */
+  #dashboard-view {
+    padding-top: var(--sp-1);
+    padding-bottom: var(--sp-4);
+    display: flex;
+    flex-direction: column;
+    min-height: 100%;
+  }
+  .footer-hint {
+    margin-top: auto;
+    padding-top: var(--sp-4);
+    display: flex;
+    align-items: flex-start;
+    gap: 6px;
+    font-size: 11px;
+    font-weight: 500;
+    line-height: 1.5;
+    color: var(--ink-400);
+  }
+  .footer-hint svg {
+    width: 13px;
+    height: 13px;
+    flex-shrink: 0;
+    margin-top: 1px;
+  }
 
   .status-card {
     padding: var(--sp-4);
@@ -271,7 +308,7 @@
     border-top: 1px solid var(--ink-100);
     font-size: 12.5px;
   }
-  .meta-row .k { color: var(--ink-400); font-weight: 600; }
+  .meta-row .k { color: var(--ink-500); font-weight: 600; }
   .meta-row .v { color: var(--ink-700); font-weight: 600; text-align: right; }
 
   /* ============ 操作区 ============ */
@@ -295,6 +332,7 @@
   .action-btn:hover:not(:disabled) {
     border-color: var(--accent-100);
     box-shadow: 0 4px 12px -4px rgba(75,69,224,0.18);
+    transform: translateY(-1px);
   }
   .action-icon {
     width: 26px;
@@ -305,8 +343,12 @@
     justify-content: center;
     background: var(--accent-50);
     color: var(--accent-600);
-    font-size: 14px;
   }
+  /* 统一用同一套内联线性 SVG(单色 currentColor、1.8px 描边),不用 unicode
+     符号——之前"生成诊断包"用的 📋 在 Windows 上会被渲染成全彩 emoji,和另外
+     四个单色文字符号语言不统一,视觉上很突兀。SVG 不依赖系统 emoji 字体的
+     呈现策略,颜色/线宽在所有环境下都一致。 */
+  .action-icon svg { width: 15px; height: 15px; }
   .action-label {
     font-size: 12.5px;
     font-weight: 700;
@@ -407,25 +449,30 @@
       <div class="section-label">操作</div>
       <div class="actions-grid">
         <button class="action-btn" id="backup-btn">
-          <span class="action-icon">&#8595;</span>
+          <span class="action-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 4v11"/><path d="M7.5 11 12 15.5 16.5 11"/><path d="M5 19.5h14"/></svg></span>
           <span class="action-label">立即备份</span>
         </button>
         <button class="action-btn" id="repair-btn">
-          <span class="action-icon">&#9889;</span>
+          <span class="action-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M14.7 6.3a4 4 0 0 0-5.4 5.4L4 17l3 3 5.3-5.3a4 4 0 0 0 5.4-5.4l-2.6 2.6-2-.6-.6-2 2.6-2.6Z"/></svg></span>
           <span class="action-label">立即修复</span>
         </button>
         <button class="action-btn" id="ping-btn">
-          <span class="action-icon">&#8644;</span>
+          <span class="action-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4 9.5a12 12 0 0 1 16 0"/><path d="M7.3 13a7.6 7.6 0 0 1 9.4 0"/><path d="M10.6 16.5a3.2 3.2 0 0 1 2.8 0"/><circle cx="12" cy="19" r="1" fill="currentColor" stroke="none"/></svg></span>
           <span class="action-label">测试连通性</span>
         </button>
         <button class="action-btn" id="diag-btn">
-          <span class="action-icon">&#128203;</span>
+          <span class="action-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M7 3.5h7l4 4V20a.7.7 0 0 1-.7.7H7A.7.7 0 0 1 6.3 20V4.2A.7.7 0 0 1 7 3.5Z"/><path d="M14 3.5V8h4"/><path d="M9 13h6M9 16.3h6"/></svg></span>
           <span class="action-label">生成诊断包</span>
         </button>
         <button class="action-btn ghost wide" id="reconfigure-btn">
-          <span class="action-icon">&#8635;</span>
+          <span class="action-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4 12a8 8 0 0 1 13.66-5.66L20 8.5"/><path d="M20 4v4.5h-4.5"/><path d="M20 12a8 8 0 0 1-13.66 5.66L4 15.5"/><path d="M4 20v-4.5h4.5"/></svg></span>
           <span class="action-label">重新配置</span>
         </button>
+      </div>
+
+      <div class="footer-hint">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="8.5"/><path d="M12 8v4.3l3 1.8"/></svg>
+        每 5 分钟自动检测一次,异常时自动修复并记录到本地日志
       </div>
 
       <div id="ping-row" class="hidden">
