@@ -4,111 +4,456 @@
 <meta charset="utf-8">
 <title>NetSentry</title>
 <style>
-  * { box-sizing: border-box; }
-  body {
-    margin: 0;
-    font-family: "Microsoft YaHei", "Segoe UI", sans-serif;
-    font-size: 14px;
-    color: #222;
-    background: #f5f5f5;
-    padding: 16px;
+  :root {
+    /* ---- 品牌色: 靛紫(indigo-violet), 不用 Windows 蓝, 刻意选一个更有质感的主色 ---- */
+    --accent-50:  #EEF0FF;
+    --accent-100: #E1E4FF;
+    --accent-500: #5B5FEF;
+    --accent-600: #4B45E0;
+    --accent-700: #3D35C4;
+
+    --ok-50: #ECFDF5;
+    --ok-500: #16A34A;
+    --ok-600: #15803D;
+
+    --bad-50: #FEF2F2;
+    --bad-500: #E11D48;
+    --bad-600: #BE123C;
+
+    --ink-900: #0F172A;
+    --ink-700: #334155;
+    --ink-500: #64748B;
+    --ink-400: #94A3B8;
+    --ink-200: #E2E8F0;
+    --ink-100: #EEF1F6;
+
+    --surface: #F6F7FB;
+    --card: #FFFFFF;
+
+    /* ---- spacing / radius token 尺度 ---- */
+    --sp-1: 4px;
+    --sp-2: 8px;
+    --sp-3: 12px;
+    --sp-4: 16px;
+    --sp-5: 24px;
+    --sp-6: 32px;
+
+    --r-sm: 8px;
+    --r-md: 12px;
+    --r-lg: 16px;
+
+    /* ---- 分层柔和阴影, 不用单层硬投影 ---- */
+    --shadow-card:
+      0 1px 1px rgba(15, 23, 42, 0.02),
+      0 4px 10px -4px rgba(15, 23, 42, 0.06),
+      0 12px 24px -12px rgba(15, 23, 42, 0.10);
+    --shadow-btn:
+      0 1px 2px rgba(15, 23, 42, 0.04),
+      0 2px 6px -2px rgba(15, 23, 42, 0.06);
+    --shadow-accent:
+      0 1px 2px rgba(75, 69, 224, 0.10),
+      0 6px 16px -6px rgba(75, 69, 224, 0.38);
   }
-  h1 { font-size: 16px; margin: 0 0 12px; }
-  .status-block {
+
+  * { box-sizing: border-box; }
+
+  html, body {
+    margin: 0;
+    width: 380px;
+    height: 520px;
+    overflow: hidden;
+  }
+
+  body {
+    font-family: "Segoe UI Variable Text", "Segoe UI", "Microsoft YaHei UI", system-ui, sans-serif;
+    -webkit-font-smoothing: antialiased;
+    background: var(--surface);
+    color: var(--ink-900);
+    display: flex;
+    flex-direction: column;
+  }
+
+  /* ============ 顶部品牌区 ============ */
+  .topbar {
+    flex: none;
     display: flex;
     align-items: center;
-    gap: 8px;
-    margin-bottom: 12px;
+    gap: var(--sp-3);
+    padding: var(--sp-4) var(--sp-5) var(--sp-3);
   }
-  .dot {
-    width: 14px;
-    height: 14px;
-    border-radius: 50%;
-    background: #999;
+  .mark {
+    width: 30px;
+    height: 30px;
+    border-radius: 9px;
+    background: linear-gradient(155deg, var(--accent-500), var(--accent-700));
+    box-shadow: var(--shadow-accent);
+    position: relative;
     flex-shrink: 0;
   }
-  .dot.healthy { background: #2e7d32; }
-  .dot.unhealthy { background: #c62828; }
-  .info-row { margin-bottom: 6px; word-break: break-all; }
-  .info-row .label { color: #666; margin-right: 4px; }
-  button {
-    display: block;
-    width: 100%;
-    padding: 8px;
-    margin-bottom: 8px;
-    border: 1px solid #ccc;
+  .mark::after {
+    content: "";
+    position: absolute;
+    inset: 8px;
     border-radius: 4px;
-    background: #fff;
-    cursor: pointer;
-    font-size: 13px;
+    border: 2px solid rgba(255,255,255,0.85);
+    border-right-color: transparent;
+    border-bottom-color: transparent;
+    transform: rotate(45deg);
   }
-  button:hover { background: #eee; }
-  button:disabled { opacity: 0.6; cursor: default; }
+  .brand-text { line-height: 1.15; }
+  .brand-title {
+    font-size: 15.5px;
+    font-weight: 700;
+    letter-spacing: -0.01em;
+    color: var(--ink-900);
+  }
+  .brand-sub {
+    font-size: 11.5px;
+    font-weight: 500;
+    color: var(--ink-400);
+    margin-top: 1px;
+  }
+
+  /* ============ 主体滚动容器 ============ */
+  .body-scroll {
+    flex: 1 1 auto;
+    overflow-y: auto;
+    padding: 0 var(--sp-5) var(--sp-5);
+    animation: rise 320ms cubic-bezier(.22,1,.36,1) both;
+  }
+  @keyframes rise {
+    from { opacity: 0; transform: translateY(6px); }
+    to   { opacity: 1; transform: translateY(0); }
+  }
+
+  .hidden { display: none !important; }
+
+  /* ============ 通用卡片 ============ */
+  .card {
+    background: var(--card);
+    border: 1px solid var(--ink-100);
+    border-radius: var(--r-lg);
+    box-shadow: var(--shadow-card);
+  }
+
+  .section-label {
+    font-size: 11px;
+    font-weight: 700;
+    letter-spacing: 0.07em;
+    text-transform: uppercase;
+    color: var(--ink-400);
+    margin: 0 0 var(--sp-2) 2px;
+  }
+
+  /* ============ 未配置: 表单视图 ============ */
+  #form-view .card {
+    padding: var(--sp-5) var(--sp-4);
+    text-align: left;
+  }
+  .form-headline {
+    font-size: 20px;
+    font-weight: 700;
+    letter-spacing: -0.015em;
+    line-height: 1.3;
+    margin: 0 0 var(--sp-2);
+  }
+  .form-desc {
+    font-size: 13px;
+    font-weight: 500;
+    color: var(--ink-500);
+    line-height: 1.55;
+    margin: 0 0 var(--sp-5);
+  }
+  .field-label {
+    font-size: 12px;
+    font-weight: 600;
+    color: var(--ink-700);
+    margin: 0 0 var(--sp-2);
+    display: block;
+  }
+
   input[type=text] {
     width: 100%;
-    padding: 8px;
-    margin-bottom: 8px;
-    border: 1px solid #ccc;
-    border-radius: 4px;
-    font-size: 13px;
+    font-family: inherit;
+    font-size: 13.5px;
+    font-weight: 500;
+    color: var(--ink-900);
+    padding: 10px 12px;
+    border: 1.5px solid var(--ink-200);
+    border-radius: var(--r-sm);
+    background: var(--surface);
+    outline: none;
+    transition: border-color 140ms ease, box-shadow 140ms ease, background 140ms ease;
   }
+  input[type=text]::placeholder { color: var(--ink-400); font-weight: 500; }
+  input[type=text]:focus {
+    border-color: var(--accent-500);
+    background: var(--card);
+    box-shadow: 0 0 0 3.5px var(--accent-100);
+  }
+
+  /* ============ 按钮体系 ============ */
+  button {
+    font-family: inherit;
+    cursor: pointer;
+    border: none;
+    outline: none;
+    transition: transform 100ms ease, box-shadow 160ms ease, background 140ms ease, opacity 140ms ease;
+  }
+  button:disabled { cursor: default; opacity: 0.55; }
+  button:active:not(:disabled) { transform: scale(0.985); }
+
+  .btn-primary {
+    width: 100%;
+    padding: 11px;
+    margin-top: var(--sp-4);
+    font-size: 13.5px;
+    font-weight: 700;
+    letter-spacing: 0.01em;
+    color: #fff;
+    background: linear-gradient(155deg, var(--accent-500), var(--accent-600));
+    border-radius: var(--r-sm);
+    box-shadow: var(--shadow-accent);
+  }
+  .btn-primary:hover:not(:disabled) { background: linear-gradient(155deg, var(--accent-600), var(--accent-700)); }
+
+  /* ============ 已配置: 状态卡片 ============ */
+  #dashboard-view { padding-top: var(--sp-1); }
+
+  .status-card {
+    padding: var(--sp-4);
+    margin-bottom: var(--sp-5);
+  }
+  .status-top {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: var(--sp-4);
+  }
+  .status-pill {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 5px 11px 5px 8px;
+    border-radius: 999px;
+    font-size: 12px;
+    font-weight: 700;
+  }
+  .status-pill .dot { width: 7px; height: 7px; border-radius: 50%; }
+  .status-pill.healthy { background: var(--ok-50); color: var(--ok-600); }
+  .status-pill.healthy .dot { background: var(--ok-500); box-shadow: 0 0 0 3px rgba(22,163,74,0.16); }
+  .status-pill.unhealthy { background: var(--bad-50); color: var(--bad-600); }
+  .status-pill.unhealthy .dot { background: var(--bad-500); box-shadow: 0 0 0 3px rgba(225,29,72,0.16); }
+
+  .service-tag {
+    font-size: 11px;
+    font-weight: 600;
+    color: var(--ink-500);
+    background: var(--ink-100);
+    padding: 4px 9px;
+    border-radius: 999px;
+  }
+
+  .server-name {
+    font-size: 19px;
+    font-weight: 700;
+    letter-spacing: -0.012em;
+    color: var(--ink-900);
+    margin-bottom: var(--sp-4);
+    word-break: break-all;
+  }
+
+  .meta-row {
+    display: flex;
+    align-items: baseline;
+    justify-content: space-between;
+    padding: 9px 0;
+    border-top: 1px solid var(--ink-100);
+    font-size: 12.5px;
+  }
+  .meta-row .k { color: var(--ink-400); font-weight: 600; }
+  .meta-row .v { color: var(--ink-700); font-weight: 600; text-align: right; }
+
+  /* ============ 操作区 ============ */
+  .actions-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: var(--sp-2);
+  }
+  .action-btn {
+    display: flex;
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 6px;
+    padding: var(--sp-3);
+    background: var(--card);
+    border: 1px solid var(--ink-100);
+    border-radius: var(--r-md);
+    box-shadow: var(--shadow-btn);
+    text-align: left;
+  }
+  .action-btn:hover:not(:disabled) {
+    border-color: var(--accent-100);
+    box-shadow: 0 4px 12px -4px rgba(75,69,224,0.18);
+  }
+  .action-icon {
+    width: 26px;
+    height: 26px;
+    border-radius: 7px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: var(--accent-50);
+    color: var(--accent-600);
+    font-size: 14px;
+  }
+  .action-label {
+    font-size: 12.5px;
+    font-weight: 700;
+    color: var(--ink-900);
+  }
+  .action-btn.wide { grid-column: 1 / -1; flex-direction: row; align-items: center; }
+  .action-btn.wide .action-icon { margin-right: 2px; }
+  .action-btn.ghost {
+    background: transparent;
+    box-shadow: none;
+    border-color: transparent;
+  }
+  .action-btn.ghost .action-icon { background: var(--ink-100); color: var(--ink-500); }
+  .action-btn.ghost:hover:not(:disabled) { background: var(--ink-100); border-color: transparent; }
+
+  /* ============ 内联 IP 输入行(不用 window.prompt) ============ */
+  #ping-row {
+    display: flex;
+    gap: var(--sp-2);
+    padding: var(--sp-3);
+    margin-top: var(--sp-2);
+    background: var(--accent-50);
+    border: 1px solid var(--accent-100);
+    border-radius: var(--r-md);
+    animation: dropdown 180ms ease both;
+  }
+  @keyframes dropdown {
+    from { opacity: 0; transform: translateY(-4px); }
+    to   { opacity: 1; transform: translateY(0); }
+  }
+  #ping-row input { flex: 1; background: var(--card); }
+  #ping-confirm-btn {
+    flex: none;
+    padding: 0 14px;
+    font-size: 12.5px;
+    font-weight: 700;
+    color: #fff;
+    background: var(--accent-500);
+    border-radius: var(--r-sm);
+  }
+  #ping-confirm-btn:hover:not(:disabled) { background: var(--accent-600); }
+
+  /* ============ 输出面板 ============ */
+  #output-wrap { margin-top: var(--sp-4); }
   #output {
+    font-family: "Cascadia Code", "Consolas", ui-monospace, monospace;
+    font-size: 11.5px;
+    line-height: 1.55;
     white-space: pre-wrap;
     word-break: break-all;
-    background: #fff;
-    border: 1px solid #ddd;
-    border-radius: 4px;
-    padding: 8px;
-    font-size: 12px;
-    max-height: 140px;
+    border-radius: var(--r-md);
+    padding: var(--sp-3);
+    max-height: 130px;
     overflow-y: auto;
-    margin-top: 8px;
+    animation: dropdown 180ms ease both;
+    background: #0F1420;
+    color: #C9D1E0;
   }
-  .hidden { display: none; }
+  #output.ok { color: #86EFAC; }
+  #output.err { color: #FCA5A5; }
 </style>
 </head>
 <body>
-  <h1>NetSentry</h1>
 
-  <div id="form-view">
-    <p>尚未加入网络,输入 enrollment token 完成安装:</p>
-    <input type="text" id="token-input" placeholder="enrollment token">
-    <button id="setup-btn">安装并加入网络</button>
+  <div class="topbar">
+    <div class="mark"></div>
+    <div class="brand-text">
+      <div class="brand-title">NetSentry</div>
+      <div class="brand-sub">VPN 客户端自愈助手</div>
+    </div>
   </div>
 
-  <div id="dashboard-view" class="hidden">
-    <div class="status-block">
-      <span id="status-dot" class="dot"></span>
-      <span id="status-text"></span>
-    </div>
-    <div class="info-row"><span class="label">服务器:</span><span id="server-name"></span></div>
-    <div class="info-row"><span class="label">上次备份:</span><span id="last-backup"></span></div>
-    <div class="info-row"><span class="label">服务状态:</span><span id="service-status"></span></div>
+  <div class="body-scroll">
 
-    <button id="backup-btn">立即备份</button>
-    <button id="repair-btn">立即修复</button>
-    <button id="ping-btn">测试连通性</button>
-    <div id="ping-row" class="hidden">
-      <input type="text" id="ping-input" placeholder="输入要测试连通性的 IP 地址">
-      <button id="ping-confirm-btn">确认</button>
+    <!-- ============ 未配置状态 ============ -->
+    <div id="form-view" class="hidden">
+      <div class="card">
+        <div class="form-headline">加入企业网络</div>
+        <p class="form-desc">粘贴管理员提供的 enrollment token,完成一次性安装即可自动接入并持续自我修复。</p>
+        <label class="field-label" for="token-input">Enrollment Token</label>
+        <input type="text" id="token-input" placeholder="例如 nc_9f8a2e...">
+        <button class="btn-primary" id="setup-btn">安装并加入网络</button>
+      </div>
     </div>
-    <button id="diag-btn">生成诊断包</button>
-    <button id="reconfigure-btn">重新配置</button>
+
+    <!-- ============ 已配置状态 ============ -->
+    <div id="dashboard-view" class="hidden">
+
+      <div class="card status-card">
+        <div class="status-top">
+          <span id="status-pill" class="status-pill healthy"><span class="dot"></span><span id="status-text">健康</span></span>
+          <span class="service-tag" id="service-status">Running</span>
+        </div>
+        <div class="server-name" id="server-name">tomtoc.cn</div>
+        <div class="meta-row"><span class="k">上次备份</span><span class="v" id="last-backup">2026-08-19 07:28:01</span></div>
+      </div>
+
+      <div class="section-label">操作</div>
+      <div class="actions-grid">
+        <button class="action-btn" id="backup-btn">
+          <span class="action-icon">&#8595;</span>
+          <span class="action-label">立即备份</span>
+        </button>
+        <button class="action-btn" id="repair-btn">
+          <span class="action-icon">&#9889;</span>
+          <span class="action-label">立即修复</span>
+        </button>
+        <button class="action-btn" id="ping-btn">
+          <span class="action-icon">&#8644;</span>
+          <span class="action-label">测试连通性</span>
+        </button>
+        <button class="action-btn" id="diag-btn">
+          <span class="action-icon">&#128203;</span>
+          <span class="action-label">生成诊断包</span>
+        </button>
+        <button class="action-btn ghost wide" id="reconfigure-btn">
+          <span class="action-icon">&#8635;</span>
+          <span class="action-label">重新配置</span>
+        </button>
+      </div>
+
+      <div id="ping-row" class="hidden">
+        <input type="text" id="ping-input" placeholder="输入要测试的 IP 地址">
+        <button id="ping-confirm-btn">确认</button>
+      </div>
+
+      <div id="output-wrap" class="hidden">
+        <div id="output"></div>
+      </div>
+
+    </div>
+
   </div>
-
-  <div id="output" class="hidden"></div>
 
 <script>
   var formView = document.getElementById('form-view');
   var dashView = document.getElementById('dashboard-view');
+  var outputWrap = document.getElementById('output-wrap');
   var outputEl = document.getElementById('output');
   // 用户点了"重新配置"之后,在提交新 token 之前不能让每 3 秒一次的 getStatus
   // 轮询把界面又刷回仪表盘(此时 netclient.json 通常还在,configured 仍是 true)。
   var manualReconfigure = false;
 
-  function showOutput(text) {
+  function showOutput(text, kind) {
     outputEl.textContent = text;
-    outputEl.classList.remove('hidden');
+    outputEl.className = kind || '';
+    outputWrap.classList.remove('hidden');
   }
 
   function setButtonsDisabled(disabled) {
@@ -122,10 +467,10 @@
     setButtonsDisabled(true);
     showOutput(label + ' 进行中…');
     return promise.then(function (result) {
-      showOutput((result.success ? '[成功] ' : '[失败] ') + result.output);
+      showOutput((result.success ? '[成功] ' : '[失败] ') + result.output, result.success ? 'ok' : 'err');
       return result;
     }).catch(function (err) {
-      showOutput('[出错] ' + err);
+      showOutput('[出错] ' + err, 'err');
     }).finally(function () {
       setButtonsDisabled(false);
     });
@@ -177,8 +522,8 @@
     formView.classList.add('hidden');
     dashView.classList.remove('hidden');
 
-    var dot = document.getElementById('status-dot');
-    dot.className = 'dot ' + (status.healthy ? 'healthy' : 'unhealthy');
+    var pill = document.getElementById('status-pill');
+    pill.className = 'status-pill ' + (status.healthy ? 'healthy' : 'unhealthy');
     document.getElementById('status-text').textContent = status.healthy ? '健康' : '异常';
     document.getElementById('server-name').textContent = status.serverName || '(无)';
     document.getElementById('last-backup').textContent = status.lastBackup || '(无)';
@@ -187,7 +532,7 @@
 
   function refreshStatus() {
     window.getStatus().then(applyStatus).catch(function (err) {
-      showOutput('[获取状态出错] ' + err);
+      showOutput('[获取状态出错] ' + err, 'err');
     });
   }
 

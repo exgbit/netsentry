@@ -26,11 +26,15 @@ func ShowPanel(cfg PanelConfig) {
 	runtime.LockOSThread()
 	defer runtime.UnlockOSThread()
 
+	// 380x520:面板重新设计后的实际内容尺寸(浅色 SaaS 方向,见
+	// internal/trayui/panel.html),比最初的 360x480 略高一些,给状态卡片和
+	// 2x2 操作网格留出不拥挤的呼吸空间——这个尺寸和 panel.html 里
+	// `html, body { width: 380px; height: 520px; }` 保持一致,改一处要记得改另一处。
 	w := webview2.NewWithOptions(webview2.WebViewOptions{
 		WindowOptions: webview2.WindowOptions{
 			Title:  "NetSentry 面板",
-			Width:  360,
-			Height: 480,
+			Width:  380,
+			Height: 520,
 			Center: true,
 		},
 	})
@@ -38,7 +42,7 @@ func ShowPanel(cfg PanelConfig) {
 		return
 	}
 	defer w.Destroy()
-	w.SetSize(360, 480, webview2.HintFixed)
+	w.SetSize(380, 520, webview2.HintFixed)
 
 	bindPanel(w, cfg)
 	w.SetHtml(panelHTML)
