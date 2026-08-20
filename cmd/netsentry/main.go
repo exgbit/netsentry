@@ -23,6 +23,7 @@ import (
 	"netsentry/internal/elevate"
 	"netsentry/internal/guardlog"
 	"netsentry/internal/netclientinstall"
+	"netsentry/internal/netpriority"
 	"netsentry/internal/schedtask"
 	"netsentry/internal/selfcleanup"
 	"netsentry/internal/settings"
@@ -35,7 +36,7 @@ import (
 const (
 	netclientDir = `C:\Program Files (x86)\Netclient\`
 	guardDir     = `C:\ProgramData\NetSentry\`
-	guardVersion = "0.5.1"
+	guardVersion = "0.5.2"
 )
 
 func backupDir() string        { return guardDir + `backup\` }
@@ -119,6 +120,18 @@ func runWatch() {
 	}
 	_ = guardlog.Append(guardLogPath(), "INFO", fmt.Sprintf("watch: %s - %s", result.Action, result.Detail))
 	fmt.Println("watch:", result.Action, "-", result.Detail)
+
+	// netmaker 网卡跃点数过低会让 DNS/路由被 VPN 抢优先级、上网变慢(真实反馈的
+	// 问题,见 internal/netpriority 包文档)。跟主 watch 逻辑是两件独立的事,
+	// 失败不影响 watch 本身的退出码——这只是个体验优化,不是"配置损坏"级别的
+	// 故障,不需要让计划任务运行历史显示成失败。
+	if npResult, npErr := netpriority.Fix(); npErr != nil {
+		_ = guardlog.Append(guardLogPath(), "WARN", "netpriority: "+npErr.Error())
+		fmt.Println("netpriority WARN:", npErr)
+	} else if npResult.Applied {
+		_ = guardlog.Append(guardLogPath(), "INFO", "netpriority: "+npResult.Detail)
+		fmt.Println("netpriority:", npResult.Detail)
+	}
 }
 
 // runTray 启动托盘图标的原生事件循环,阻塞到 systray.Quit() 被调用为止。
@@ -641,6 +654,17 @@ func runSetupNetclient() {
 	if err := netclientinstall.Run(token); err != nil {
 		fmt.Println("setup-netclient error:", err)
 		os.Exit(1)
+	}
+
+	// 刚加入网络、netmaker 网卡刚出现的这一刻就把跃点数调好,不用等下一次
+	// (最长 5 分钟后)watch 巡检——不然新加入的同事马上就会感觉到网页很慢。
+	// 失败只记日志、不中止整个 setup-netclient(同 runWatch 里的处理方式)。
+	if npResult, npErr := netpriority.Fix(); npErr != nil {
+		_ = guardlog.Append(guardLogPath(), "WARN", "netpriority: "+npErr.Error())
+		fmt.Println("netpriority WARN:", npErr)
+	} else if npResult.Applied {
+		_ = guardlog.Append(guardLogPath(), "INFO", "netpriority: "+npResult.Detail)
+		fmt.Println("netpriority:", npResult.Detail)
 	}
 
 	doInstall()
