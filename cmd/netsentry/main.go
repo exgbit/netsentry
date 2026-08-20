@@ -25,6 +25,7 @@ import (
 	"netsentry/internal/netclientinstall"
 	"netsentry/internal/schedtask"
 	"netsentry/internal/selfcleanup"
+	"netsentry/internal/settings"
 	"netsentry/internal/sysreport"
 	"netsentry/internal/trayui"
 	"netsentry/internal/watch"
@@ -34,16 +35,13 @@ import (
 const (
 	netclientDir = `C:\Program Files (x86)\Netclient\`
 	guardDir     = `C:\ProgramData\NetSentry\`
-	guardVersion = "1.0.0"
+	guardVersion = "0.5.1"
 )
-
-// connectivityTargets 是面板"测试连通性"按钮要 ping 的目标 IP——内部企业网络,
-// 网段固定,不需要让每个同事自己填 IP。在这里配置,改了要重新编译发布。
-var connectivityTargets = []string{"100.67.147.4"}
 
 func backupDir() string        { return guardDir + `backup\` }
 func installLogPath() string   { return guardDir + "install.log" }
 func guardLogPath() string     { return guardDir + "guard.log" }
+func settingsPath() string     { return guardDir + "settings.json" }
 func installedExePath() string { return guardDir + "netsentry.exe" }
 
 // installedTrayExePath 返回装好之后 GUI 子系统版本的可执行文件路径——见本文件顶部
@@ -183,13 +181,22 @@ func onTrayReady() {
 	quitItem := systray.AddMenuItem("退出", "退出 NetSentry 托盘")
 	restartItem := systray.AddMenuItem("重启托盘", "重新拉起一个托盘进程(面板卡死等极端情况的兜底手段)")
 
+	// settings.json 格式坏了(比如管理员手改的时候手滑)不会阻塞托盘启动——
+	// settings.Load/面板的 getSettings/saveSettings 绑定都有兜底,这里只是提前
+	// 探一次、记一条 WARN 到 guard.log,让管理员能发现"改坏了"这件事,而不是
+	// 悄悄回退到默认值、自己却毫无察觉。
+	if _, err := settings.Load(settingsPath()); err != nil {
+		_ = guardlog.Append(guardLogPath(), "WARN", "settings.json 解析失败,已回退到默认连通性测试目标: "+err.Error())
+	}
+
 	panelCfg := trayui.PanelConfig{
-		ExePath:             installedExePath(),
-		NetclientDir:        netclientDir,
-		BackupDir:           backupDir(),
-		InstallLogPath:      installLogPath(),
-		Svc:                 svc,
-		ConnectivityTargets: connectivityTargets,
+		ExePath:        installedExePath(),
+		NetclientDir:   netclientDir,
+		BackupDir:      backupDir(),
+		InstallLogPath: installLogPath(),
+		Version:        guardVersion,
+		Svc:            svc,
+		SettingsPath:   settingsPath(),
 	}
 
 	go func() {
@@ -378,6 +385,13 @@ func doInstall() {
 		warnings++
 	} else {
 		log("INFO", "added Defender exclusion for "+netclientDir)
+	}
+
+	// 只在 settings.json 不存在时写默认值,已存在就不碰——保护管理员已经手动
+	// 改过的连通性测试目标 IP 不会被重装/升级冲掉。
+	if err := settings.WriteDefaultIfMissing(settingsPath()); err != nil {
+		log("WARN", "write default settings.json failed: "+err.Error())
+		warnings++
 	}
 
 	if _, statErr := os.Stat(netclientDir + "netclient.json"); statErr == nil {

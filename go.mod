@@ -5,6 +5,7 @@ go 1.26.5
 require (
 	github.com/getlantern/systray v1.2.2
 	github.com/jchv/go-webview2 v0.0.0-20260205173254-56598839c808
+	golang.org/x/sys v0.1.0
 )
 
 require (
@@ -17,5 +18,4 @@ require (
 	github.com/go-stack/stack v1.8.0 // indirect
 	github.com/jchv/go-winloader v0.0.0-20250406163304-c1995be93bd1 // indirect
 	github.com/oxtoacart/bpool v0.0.0-20190530202638-03653db5a59c // indirect
-	golang.org/x/sys v0.1.0 // indirect
 )

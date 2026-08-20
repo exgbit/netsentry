@@ -7,6 +7,8 @@ import (
 	"fmt"
 	"os"
 	"os/exec"
+
+	"netsentry/internal/winexec"
 )
 
 // IsElevated 判断当前进程是否以管理员权限运行。
@@ -16,7 +18,7 @@ import (
 // 广泛使用的、不需要额外依赖的管理员权限检测技巧。这里只看退出码,不解析具体错误
 // 文案(文案随系统语言变化,退出码不会)。
 func IsElevated() (bool, error) {
-	err := exec.Command("net.exe", "session").Run()
+	err := winexec.Hidden("net.exe", "session").Run()
 	if err == nil {
 		return true, nil
 	}
@@ -42,7 +44,7 @@ func RelaunchElevated(args []string) error {
 	}
 
 	cmd := relaunchCommand(exePath, args)
-	if out, err := exec.Command("powershell.exe", "-Command", cmd).CombinedOutput(); err != nil {
+	if out, err := winexec.Hidden("powershell.exe", "-Command", cmd).CombinedOutput(); err != nil {
 		return fmt.Errorf("powershell relaunch elevated: %w: %s", err, out)
 	}
 	return nil

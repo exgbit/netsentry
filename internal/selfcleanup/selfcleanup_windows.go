@@ -4,9 +4,10 @@ package selfcleanup
 
 import (
 	"fmt"
-	"os/exec"
 	"strings"
 	"time"
+
+	"netsentry/internal/winexec"
 )
 
 // selfCleanupTaskName 是本包注册的一次性清理任务名。一次性、自删除,不需要
@@ -72,7 +73,7 @@ func SpawnDelayedRemoveAll(dir string) error {
 		"/SC", "ONCE", "/ST", startTime,
 		"/RU", "SYSTEM", "/F",
 	}
-	if out, err := exec.Command("schtasks.exe", args...).CombinedOutput(); err != nil {
+	if out, err := winexec.Hidden("schtasks.exe", args...).CombinedOutput(); err != nil {
 		return fmt.Errorf("schtasks %s: %w: %s", strings.Join(args, " "), err, out)
 	}
 	return nil

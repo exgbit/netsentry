@@ -1,8 +1,12 @@
 package trayui
 
 import (
+	"encoding/json"
+	"os"
 	"os/exec"
 	"strings"
+
+	"netsentry/internal/settings"
 )
 
 // PanelConfig 是面板需要的全部依赖,由 main.go 组装后传给 ShowPanel。
@@ -11,12 +15,14 @@ type PanelConfig struct {
 	NetclientDir   string
 	BackupDir      string
 	InstallLogPath string // guardDir + "install.log",setupNetclient 失败且没有可展示输出时,指引用户去看这个文件
+	Version        string // NetSentry 自身版本号,窗口标题栏展示
 	Svc            interface{ IsRunning() (bool, error) }
-	// ConnectivityTargets 是"测试连通性"按钮要 ping 的目标 IP 列表——这是内部
-	// 企业工具,网段是固定的,不需要每次都让用户自己输入 IP(真机测试发现
-	// window.prompt() 在 WebView2 里渲染很怪,而且对着一批不懂技术的同事来说
-	// "还要自己填 IP" 也是不必要的操作门槛)。在 main.go 里配置,不在面板里填。
-	ConnectivityTargets []string
+	// SettingsPath 是 settings.json 的路径("测试连通性"目标 IP 等设置存在这里)。
+	// getSettings/saveSettings 绑定每次都重新读这个文件,不是像早期版本那样在
+	// main.go 启动时读一次、缓存进 ConnectivityTargets 字段——用户在面板"设置"
+	// 里改完保存后,不重启托盘就要立刻对下一次"测试连通性"生效,缓存住旧值做
+	// 不到这一点。
+	SettingsPath string
 }
 
 // ActionResult 是面板按钮触发的子命令操作(backupNow/repairNow/generateDiag/
@@ -33,7 +39,7 @@ type ActionResult struct {
 // 到已安装的 netsentry.exe 重新走一遍 CLI 子命令,复用同一套已经测试过的
 // 代码路径,并且让 setup-netclient 自己的 ensureElevated() 正确处理提权边界。
 func runExeCommand(exePath string, args ...string) ActionResult {
-	out, err := exec.Command(exePath, args...).CombinedOutput()
+	out, err := hiddenCommand(exePath, args...).CombinedOutput()
 	return ActionResult{Success: err == nil, Output: strings.TrimSpace(string(out))}
 }
 
@@ -73,12 +79,12 @@ func generateDiag(exePath string) ActionResult {
 // 错误说明,而不是静默地什么都不做。
 func testConnectivity(targets []string) ActionResult {
 	if len(targets) == 0 {
-		return ActionResult{Success: false, Output: "未配置测试目标 IP(联系管理员在 NetSentry 里配置 ConnectivityTargets)"}
+		return ActionResult{Success: false, Output: "未配置测试目标 IP,请在面板的\"设置\"里添加"}
 	}
 	var lines []string
 	anyOK := false
 	for _, ip := range targets {
-		out, err := exec.Command("ping.exe", "-n", "3", ip).CombinedOutput()
+		out, err := hiddenCommand("ping.exe", "-n", "3", ip).CombinedOutput()
 		ok := err == nil
 		if ok {
 			anyOK = true
@@ -88,9 +94,33 @@ func testConnectivity(targets []string) ActionResult {
 			status = "成功"
 		}
 		lines = append(lines, ip+" — "+status)
-		lines = append(lines, strings.TrimSpace(string(out)))
+		lines = append(lines, strings.TrimSpace(decodeConsoleOutput(out)))
 	}
 	return ActionResult{Success: anyOK, Output: strings.Join(lines, "\n")}
+}
+
+// saveSettings 把去掉首尾空白、丢弃空字符串之后的 targets 写回 settingsPath。
+// 至少要留一个非空 IP——全部清空会让"测试连通性"永远失败且看不出原因,不如
+// 直接拒绝保存、把问题留在设置界面上让用户看得到。
+func saveSettings(settingsPath string, targets []string) ActionResult {
+	cleaned := make([]string, 0, len(targets))
+	for _, t := range targets {
+		t = strings.TrimSpace(t)
+		if t != "" {
+			cleaned = append(cleaned, t)
+		}
+	}
+	if len(cleaned) == 0 {
+		return ActionResult{Success: false, Output: "至少需要保留一个 IP"}
+	}
+	data, err := json.MarshalIndent(settings.Settings{ConnectivityTargets: cleaned}, "", "  ")
+	if err != nil {
+		return ActionResult{Success: false, Output: "序列化设置失败: " + err.Error()}
+	}
+	if err := os.WriteFile(settingsPath, data, 0o644); err != nil {
+		return ActionResult{Success: false, Output: "写入 " + settingsPath + " 失败: " + err.Error()}
+	}
+	return ActionResult{Success: true, Output: "已保存 " + strings.Join(cleaned, ", ")}
 }
 
 // parseDiagPath 从 `diag` 子命令的输出里取出 "diag bundle written to <path>"

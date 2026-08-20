@@ -8,10 +8,10 @@ import (
 	"encoding/json"
 	"fmt"
 	"os"
-	"os/exec"
 	"time"
 
 	"netsentry/internal/schedtask"
+	"netsentry/internal/winexec"
 )
 
 const netclientDir = `C:\Program Files (x86)\Netclient\`
@@ -19,7 +19,7 @@ const netclientDir = `C:\Program Files (x86)\Netclient\`
 // ServiceStatus 返回 sc.exe query netclient 的输出,加上 winsw.xml 的内容
 // (netclient 自己的 Windows 服务是靠 WinSW 包起来跑的,winsw.xml 是它的服务配置)。
 func ServiceStatus() (string, error) {
-	out, err := exec.Command("sc.exe", "query", "netclient").CombinedOutput()
+	out, err := winexec.Hidden("sc.exe", "query", "netclient").CombinedOutput()
 	scSection := string(out)
 	if err != nil {
 		scSection = fmt.Sprintf("sc.exe query netclient failed: %v\n%s", err, out)
@@ -41,7 +41,7 @@ func ServiceStatus() (string, error) {
 func ScheduledTasksStatus() (string, error) {
 	var report string
 	for _, name := range schedtask.AllTaskNames() {
-		out, err := exec.Command("schtasks.exe", "/Query", "/TN", name, "/FO", "LIST", "/V").CombinedOutput()
+		out, err := winexec.Hidden("schtasks.exe", "/Query", "/TN", name, "/FO", "LIST", "/V").CombinedOutput()
 		section := string(out)
 		if err != nil {
 			section = fmt.Sprintf("schtasks /Query /TN %s failed: %v\n%s", name, err, out)
@@ -54,14 +54,14 @@ func ScheduledTasksStatus() (string, error) {
 // DefenderStatus 返回 Windows Defender 的排除路径列表,加上和 Netclient 路径相关的
 // 威胁检测历史(用来排查"是不是 Defender 误报删了 netclient 文件")。
 func DefenderStatus() (string, error) {
-	exclOut, exclErr := exec.Command("powershell.exe", "-NoProfile", "-Command",
+	exclOut, exclErr := winexec.Hidden("powershell.exe", "-NoProfile", "-Command",
 		"Get-MpPreference | Select-Object -ExpandProperty ExclusionPath").CombinedOutput()
 	exclSection := string(exclOut)
 	if exclErr != nil {
 		exclSection = fmt.Sprintf("Get-MpPreference failed: %v\n%s", exclErr, exclOut)
 	}
 
-	threatOut, threatErr := exec.Command("powershell.exe", "-NoProfile", "-Command",
+	threatOut, threatErr := winexec.Hidden("powershell.exe", "-NoProfile", "-Command",
 		"Get-MpThreatDetection | Where-Object { $_.Resources -like '*Netclient*' } | Format-List").CombinedOutput()
 	threatSection := string(threatOut)
 	if threatErr != nil {
@@ -75,7 +75,7 @@ func DefenderStatus() (string, error) {
 // SystemInfo 返回一份汇总的环境信息:Windows 版本、netclient 版本、guard 版本、
 // 主机名和生成时间。
 func SystemInfo(guardVersion string) (string, error) {
-	osOut, osErr := exec.Command("powershell.exe", "-NoProfile", "-Command",
+	osOut, osErr := winexec.Hidden("powershell.exe", "-NoProfile", "-Command",
 		"(Get-CimInstance Win32_OperatingSystem).Caption.Trim() + ' ' + (Get-CimInstance Win32_OperatingSystem).Version").CombinedOutput()
 	osVersion := string(osOut)
 	if osErr != nil {

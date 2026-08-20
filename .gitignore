@@ -1,2 +1,4 @@
 .worktrees/
 dist/
+.design-backups/
+.design-shots/

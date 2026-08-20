@@ -5,7 +5,8 @@ package defenderexcl
 
 import (
 	"fmt"
-	"os/exec"
+
+	"netsentry/internal/winexec"
 )
 
 // Add 把 path 加入 Windows Defender 排除列表。Add-MpPreference 本身对重复添加是
@@ -32,7 +33,7 @@ func Remove(path string) error {
 // 判断依据。
 func runMpPreference(cmdlet, path string) error {
 	cmd := fmt.Sprintf("%s -ExclusionPath '%s'", cmdlet, path)
-	out, err := exec.Command("powershell.exe", "-NoProfile", "-Command", cmd).CombinedOutput()
+	out, err := winexec.Hidden("powershell.exe", "-NoProfile", "-Command", cmd).CombinedOutput()
 	if err != nil {
 		return fmt.Errorf("powershell %s -ExclusionPath %q: %w: %s", cmdlet, path, err, out)
 	}

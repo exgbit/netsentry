@@ -8,8 +8,9 @@ import (
 	"fmt"
 	"io"
 	"os"
-	"os/exec"
 	"strings"
+
+	"netsentry/internal/winexec"
 )
 
 // SCController 通过 sc.exe 控制指定名字的 Windows 服务。
@@ -18,28 +19,36 @@ type SCController struct {
 	LogPath string
 }
 
+// 下面几个方法里 fmt.Errorf 拼错误消息时,原始 out 都先过一遍
+// winexec.DecodeConsoleOutput 再塞进去——sc.exe 在中文 Windows 上是按系统 OEM
+// 代码页(GBK)输出中文提示的,不转码直接当 UTF-8 用会显示成乱码,这条错误消息
+// 最终可能透传到面板"立即修复"的执行结果里给用户看(真机上 ping.exe 走同一个
+// 代码页问题真的复现过乱码,sc.exe 是同一类风险)。strings.Contains 那几处判断
+// 只找 RUNNING/1056/1062 这类西文/数字 token,GBK 是 ASCII 兼容的,不转码去匹配
+// 原始字节没问题,不用等解码。
+
 func (c SCController) IsRunning() (bool, error) {
-	out, err := exec.Command("sc.exe", "query", c.Name).CombinedOutput()
+	out, err := winexec.Hidden("sc.exe", "query", c.Name).CombinedOutput()
 	if err != nil {
-		return false, fmt.Errorf("sc query %s: %w: %s", c.Name, err, out)
+		return false, fmt.Errorf("sc query %s: %w: %s", c.Name, err, winexec.DecodeConsoleOutput(out))
 	}
 	return strings.Contains(string(out), "RUNNING"), nil
 }
 
 func (c SCController) Start() error {
-	out, err := exec.Command("sc.exe", "start", c.Name).CombinedOutput()
+	out, err := winexec.Hidden("sc.exe", "start", c.Name).CombinedOutput()
 	// 1056 = 服务已经在运行,视为成功
 	if err != nil && !strings.Contains(string(out), "1056") {
-		return fmt.Errorf("sc start %s: %w: %s", c.Name, err, out)
+		return fmt.Errorf("sc start %s: %w: %s", c.Name, err, winexec.DecodeConsoleOutput(out))
 	}
 	return nil
 }
 
 func (c SCController) Stop() error {
-	out, err := exec.Command("sc.exe", "stop", c.Name).CombinedOutput()
+	out, err := winexec.Hidden("sc.exe", "stop", c.Name).CombinedOutput()
 	// 1062 = 服务尚未启动,视为成功
 	if err != nil && !strings.Contains(string(out), "1062") {
-		return fmt.Errorf("sc stop %s: %w: %s", c.Name, err, out)
+		return fmt.Errorf("sc stop %s: %w: %s", c.Name, err, winexec.DecodeConsoleOutput(out))
 	}
 	return nil
 }

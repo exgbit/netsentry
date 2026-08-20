@@ -6,8 +6,9 @@ import (
 	"errors"
 	"fmt"
 	"os"
-	"os/exec"
 	"strings"
+
+	"netsentry/internal/winexec"
 )
 
 // Register 注册全部 4 个计划任务(exePath 是已安装到位的 netsentry.exe 路径)。
@@ -23,7 +24,7 @@ func Register(exePath string) error {
 		WatchTaskArgs(exePath),
 		WatchOnStartTaskArgs(exePath),
 	} {
-		if out, err := exec.Command("schtasks.exe", args...).CombinedOutput(); err != nil {
+		if out, err := winexec.Hidden("schtasks.exe", args...).CombinedOutput(); err != nil {
 			errs = append(errs, fmt.Errorf("schtasks %s: %w: %s", strings.Join(args, " "), err, out))
 		}
 	}
@@ -54,7 +55,7 @@ func registerResumeTask(exePath string) error {
 	}
 
 	args := []string{"/Create", "/TN", resumeTaskName, "/XML", tmpPath, "/RU", "SYSTEM", "/F"}
-	if out, err := exec.Command("schtasks.exe", args...).CombinedOutput(); err != nil {
+	if out, err := winexec.Hidden("schtasks.exe", args...).CombinedOutput(); err != nil {
 		return fmt.Errorf("schtasks %s: %w: %s", strings.Join(args, " "), err, out)
 	}
 	return nil
@@ -69,7 +70,7 @@ func Unregister() error {
 	var errs []error
 
 	for _, name := range AllTaskNames() {
-		out, err := exec.Command("schtasks.exe", "/Delete", "/TN", name, "/F").CombinedOutput()
+		out, err := winexec.Hidden("schtasks.exe", "/Delete", "/TN", name, "/F").CombinedOutput()
 		if err != nil && !isTaskNotFoundOutput(string(out)) {
 			errs = append(errs, fmt.Errorf("schtasks /Delete /TN %s /F: %w: %s", name, err, out))
 		}

@@ -59,8 +59,8 @@
 
   html, body {
     margin: 0;
-    width: 380px;
-    height: 520px;
+    width: 100%;
+    height: 100%;
     overflow: hidden;
   }
 
@@ -69,8 +69,61 @@
     -webkit-font-smoothing: antialiased;
     background: var(--surface);
     color: var(--ink-900);
+  }
+
+  /* ============ 左右两栏外壳 ============
+     操作结果之前是"仪表盘下面展开一块深色框",真机反馈说看起来像蹦出个终端
+     窗口。现在改成右侧独立一栏:原生窗口本身在有结果要显示时从 380 宽变成
+     680 宽(见 panel_windows.go 的 setOutputPanelOpen 绑定,左边缘不动、只往
+     右长),.output-col 天然靠 flex 占满多出来的那部分空间,不需要额外定位。 */
+  .app-shell {
+    display: flex;
+    flex-direction: row;
+    width: 100%;
+    height: 100%;
+  }
+  .main-col {
+    width: 380px;
+    flex: none;
     display: flex;
     flex-direction: column;
+    height: 100%;
+  }
+  .output-col {
+    flex: 1 1 auto;
+    min-width: 0;
+    height: 100%;
+    display: flex;
+    flex-direction: column;
+    border-left: 1px solid var(--ink-100);
+    background: var(--surface);
+  }
+  .output-col:not(.open) { display: none; }
+  .output-col-header {
+    flex: none;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: var(--sp-4) var(--sp-4) var(--sp-3);
+  }
+  .output-col-title {
+    font-size: 11px;
+    font-weight: 700;
+    letter-spacing: 0.07em;
+    text-transform: uppercase;
+    color: var(--ink-500);
+  }
+  .output-col-close {
+    font-size: 15px;
+    line-height: 1;
+    color: var(--ink-400);
+    padding: 2px;
+  }
+  .output-col-close:hover:not(:disabled) { color: var(--ink-700); text-decoration: none; }
+  .output-col-body {
+    flex: 1 1 auto;
+    min-height: 0;
+    padding: 0 var(--sp-4) var(--sp-4);
   }
 
   /* ============ 顶部品牌区 ============ */
@@ -84,21 +137,8 @@
   .mark {
     width: 30px;
     height: 30px;
-    border-radius: 9px;
-    background: linear-gradient(155deg, var(--accent-500), var(--accent-700));
-    box-shadow: var(--shadow-accent);
-    position: relative;
     flex-shrink: 0;
-  }
-  .mark::after {
-    content: "";
-    position: absolute;
-    inset: 8px;
-    border-radius: 4px;
-    border: 2px solid rgba(255,255,255,0.85);
-    border-right-color: transparent;
-    border-bottom-color: transparent;
-    transform: rotate(45deg);
+    filter: drop-shadow(0 3px 8px rgba(75,69,224,0.38));
   }
   .brand-text { line-height: 1.15; }
   .brand-title {
@@ -114,20 +154,19 @@
     margin-top: 1px;
   }
 
-  /* ============ 主体滚动容器 ============ */
+  /* ============ 主体容器 ============ */
   .body-scroll {
     flex: 1 1 auto;
-    overflow-y: auto;
+    /* 面板是固定尺寸的原生弹窗,不是网页,不该能滚动——之前留了 overflow-y:auto
+       当"安全网"防止内容裁掉,真机反馈这样还是能感觉到滚一下,体验不对。
+       现在彻底禁掉滚动(overflow:hidden),改成从窗口尺寸(见 panel_windows.go
+       的 ShowPanel)上留够余量保证内容不会被裁,而不是靠能滚动来兜底。
+       操作结果现在挪到右侧独立一栏(.output-col)展示,不再挤在这个容器里,
+       长文本靠 #output 自己的 overflow-y:auto 在那一栏内部滚,不受这里影响。 */
+    overflow: hidden;
     padding: 0 var(--sp-5) var(--sp-5);
     animation: rise 320ms cubic-bezier(.22,1,.36,1) both;
-    /* 面板是固定尺寸的原生弹窗,不是可以随便滚的网页——正常情况下内容应该
-       刚好放得下。overflow-y:auto 只是留一道安全网(万一诊断输出特别长之类
-       的边界情况),但常驻的滚动条本身看起来很"网页感",和原生小面板的
-       定位不符,真机反馈过这一点。滚动能力保留,只是不常驻显示滚动条轨道/
-       滑块外观。 */
-    scrollbar-width: none; /* Firefox */
   }
-  .body-scroll::-webkit-scrollbar { display: none; } /* WebView2 走 Chromium 内核 */
   @keyframes rise {
     from { opacity: 0; transform: translateY(6px); }
     to   { opacity: 1; transform: translateY(0); }
@@ -234,11 +273,10 @@
   .btn-primary:hover:not(:disabled) { background: linear-gradient(155deg, var(--accent-600), var(--accent-700)); }
 
   /* ============ 已配置: 状态卡片 ============ */
-  /* display:flex + min-height:100% + 页脚 margin-top:auto——健康稳态下没有
-     展开的 IP 输入行/输出面板时,内容撑不满固定 520px 高的窗口,底部会留一大片
-     空白,像窗口没调好尺寸。把页脚提示钉在可用空间底部,而不是简单加空白
-     div——顺便传达一个真实有用的信息(自动检测在后台跑着),不是纯粹为了
-     填空间而加内容。 */
+  /* display:flex + min-height:100% + 页脚 margin-top:auto——健康稳态下内容
+     撑不满固定高度的窗口,底部会留一大片空白,像窗口没调好尺寸。把页脚提示
+     钉在可用空间底部,而不是简单加空白 div——顺便传达一个真实有用的信息
+     (自动检测在后台跑着),不是纯粹为了填空间而加内容。 */
   #dashboard-view {
     padding-top: var(--sp-1);
     padding-bottom: var(--sp-4);
@@ -263,6 +301,95 @@
     flex-shrink: 0;
     margin-top: 1px;
   }
+  /* flex 子项默认 min-width:auto,内容比可用宽度长的时候不会正常换行、而是把
+     整行往外撑,第二行反而跑去跟图标对齐、看起来错位(真机截图发现的)。
+     文字包一层 span + min-width:0 让它能在自己的列宽里正常折行。 */
+  .footer-hint span {
+    flex: 1 1 auto;
+    min-width: 0;
+  }
+
+  .link-btn {
+    background: none;
+    border: none;
+    padding: 0;
+    font: inherit;
+    font-weight: 700;
+    color: var(--accent-600);
+  }
+  .link-btn:hover:not(:disabled) { text-decoration: underline; }
+
+  .form-back-btn {
+    display: inline-flex;
+    align-items: center;
+    margin-bottom: var(--sp-3);
+    font-size: 12px;
+  }
+
+  .footer-meta {
+    margin-top: var(--sp-3);
+    padding-top: var(--sp-3);
+    border-top: 1px solid var(--ink-100);
+    display: flex;
+    align-items: baseline;
+    justify-content: space-between;
+    font-size: 10.5px;
+    font-weight: 600;
+    color: var(--ink-400);
+  }
+  .footer-meta .link-btn { font-size: 10.5px; }
+  .footer-credit { color: var(--ink-400); }
+
+  /* ============ 更新日志 ============ */
+  .changelog-entry {
+    padding: var(--sp-3) 0;
+    border-top: 1px solid var(--ink-100);
+  }
+  .changelog-entry:first-child { border-top: none; padding-top: 0; }
+  .changelog-version-row {
+    display: flex;
+    align-items: baseline;
+    gap: var(--sp-2);
+    margin-bottom: 6px;
+  }
+  .changelog-version {
+    font-size: 14px;
+    font-weight: 700;
+    color: var(--ink-900);
+  }
+  .changelog-date {
+    font-size: 11px;
+    font-weight: 600;
+    color: var(--ink-400);
+  }
+  .changelog-notes {
+    margin: 0;
+    padding-left: 16px;
+    font-size: 12px;
+    font-weight: 500;
+    color: var(--ink-700);
+    line-height: 1.6;
+  }
+  .changelog-notes li { margin-bottom: 2px; }
+
+  /* ============ 设置 ============ */
+  #settings-view .form-desc { margin-bottom: var(--sp-4); }
+  .settings-ip-row {
+    display: flex;
+    align-items: center;
+    gap: var(--sp-2);
+    margin-bottom: var(--sp-2);
+  }
+  .settings-ip-row input[type=text] { flex: 1 1 auto; min-width: 0; }
+  .settings-ip-remove {
+    flex: none;
+    font-size: 15px;
+    line-height: 1;
+    color: var(--ink-400);
+    padding: 4px 6px;
+  }
+  .settings-ip-remove:hover:not(:disabled) { color: var(--bad-600); text-decoration: none; }
+  #settings-add-btn { display: block; margin: var(--sp-1) 0 var(--sp-5); font-size: 12.5px; }
 
   .status-card {
     padding: var(--sp-4);
@@ -377,7 +504,6 @@
   }
 
   /* ============ 输出面板 ============ */
-  #output-wrap { margin-top: var(--sp-4); }
   #output {
     font-family: "Cascadia Code", "Consolas", ui-monospace, monospace;
     font-size: 11.5px;
@@ -386,7 +512,8 @@
     word-break: break-all;
     border-radius: var(--r-md);
     padding: var(--sp-3);
-    max-height: 130px;
+    height: 100%;
+    box-sizing: border-box;
     overflow-y: auto;
     animation: dropdown 180ms ease both;
     background: #0F1420;
@@ -398,8 +525,20 @@
 </head>
 <body>
 
+<div class="app-shell">
+  <div class="main-col">
+
   <div class="topbar">
-    <div class="mark"></div>
+    <svg class="mark" viewBox="0 0 32 32" fill="none" aria-hidden="true">
+      <defs>
+        <linearGradient id="markGrad" x1="4" y1="2" x2="28" y2="30" gradientUnits="userSpaceOnUse">
+          <stop offset="0" stop-color="#5B5FEF"/>
+          <stop offset="1" stop-color="#3D35C4"/>
+        </linearGradient>
+      </defs>
+      <path d="M16 2.4 27.2 6.2v8.5c0 8.1-4.6 13.7-11.2 15.4-6.6-1.7-11.2-7.3-11.2-15.4V6.2L16 2.4Z" fill="url(#markGrad)"/>
+      <path d="M10.4 16.4 14 20l7.6-8.2" stroke="#fff" stroke-width="2.3" stroke-linecap="round" stroke-linejoin="round"/>
+    </svg>
     <div class="brand-text">
       <div class="brand-title">NetSentry</div>
       <div class="brand-sub">VPN 客户端自愈助手</div>
@@ -410,6 +549,7 @@
 
     <!-- ============ 未配置状态 ============ -->
     <div id="form-view" class="hidden">
+      <button class="link-btn form-back-btn" id="back-btn" type="button">← 返回主界面</button>
       <div class="card">
         <div class="form-headline">加入企业网络</div>
         <p class="form-desc">粘贴管理员提供的 enrollment token,完成一次性安装即可自动接入并持续自我修复。</p>
@@ -449,51 +589,119 @@
           <span class="action-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M7 3.5h7l4 4V20a.7.7 0 0 1-.7.7H7A.7.7 0 0 1 6.3 20V4.2A.7.7 0 0 1 7 3.5Z"/><path d="M14 3.5V8h4"/><path d="M9 13h6M9 16.3h6"/></svg></span>
           <span class="action-label">生成诊断包</span>
         </button>
-        <button class="action-btn ghost wide" id="reconfigure-btn">
+        <button class="action-btn ghost" id="reconfigure-btn">
           <span class="action-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4 12a8 8 0 0 1 13.66-5.66L20 8.5"/><path d="M20 4v4.5h-4.5"/><path d="M20 12a8 8 0 0 1-13.66 5.66L4 15.5"/><path d="M4 20v-4.5h4.5"/></svg></span>
           <span class="action-label">重新配置</span>
+        </button>
+        <button class="action-btn ghost" id="settings-btn">
+          <span class="action-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1Z"/></svg></span>
+          <span class="action-label">设置</span>
         </button>
       </div>
 
       <div class="footer-hint">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="8.5"/><path d="M12 8v4.3l3 1.8"/></svg>
-        每 5 分钟自动检测一次,异常时自动修复并记录到本地日志
+        <span>每 5 分钟自动检测一次,异常时自动修复并记录到本地日志</span>
       </div>
-
-      <div id="output-wrap" class="hidden">
-        <div id="output"></div>
+      <div class="footer-meta">
+        <button class="link-btn" id="open-log-btn" type="button">查看日志</button>
+        <span class="footer-credit">果比 · guobi.ai</span>
       </div>
 
     </div>
 
+    <!-- ============ 更新日志 ============ -->
+    <div id="changelog-view" class="hidden">
+      <button class="link-btn form-back-btn" id="changelog-back-btn" type="button">← 返回主界面</button>
+      <div class="section-label">更新日志</div>
+      <div id="changelog-list"></div>
+    </div>
+
+    <!-- ============ 设置 ============ -->
+    <div id="settings-view" class="hidden">
+      <button class="link-btn form-back-btn" id="settings-back-btn" type="button">← 返回主界面</button>
+      <div class="section-label">连通性测试目标</div>
+      <p class="form-desc">"测试连通性"按钮会依次 ping 下面这些 IP,任意一个通就算成功。</p>
+      <div id="settings-ip-list"></div>
+      <button class="link-btn" id="settings-add-btn" type="button">+ 添加一个 IP</button>
+      <button class="btn-primary" id="settings-save-btn" type="button">保存</button>
+    </div>
+
   </div>
+
+  </div>
+
+  <!-- ============ 操作结果(右侧独立一栏,不是内嵌在仪表盘里) ============ -->
+  <div class="output-col" id="output-col">
+    <div class="output-col-header">
+      <span class="output-col-title">执行结果</span>
+      <button class="link-btn output-col-close" id="output-close-btn" type="button">✕</button>
+    </div>
+    <div class="output-col-body">
+      <div id="output"></div>
+    </div>
+  </div>
+
+</div>
 
 <script>
   var formView = document.getElementById('form-view');
   var dashView = document.getElementById('dashboard-view');
-  var outputWrap = document.getElementById('output-wrap');
+  var outputCol = document.getElementById('output-col');
   var outputEl = document.getElementById('output');
   // 用户点了"重新配置"之后,在提交新 token 之前不能让每 3 秒一次的 getStatus
   // 轮询把界面又刷回仪表盘(此时 netclient.json 通常还在,configured 仍是 true)。
   var manualReconfigure = false;
 
+  // 操作结果之前是仪表盘下面展开的一块深色框,真机反馈说看起来像蹦出个终端
+  // 窗口。现在改成原生窗口本身在右侧展开一栏——setOutputPanelOpen 让 Go 侧
+  // 把窗口宽度在 380(收起)和 680(展开)之间切换(左边缘不动,只向右变宽,
+  // 见 panel_windows.go),.output-col 的 CSS 宽度完全由这部分多出来的空间
+  // 撑开,不需要额外定位/动画。
   function showOutput(text, kind) {
     outputEl.textContent = text;
     outputEl.className = kind || '';
-    outputWrap.classList.remove('hidden');
+    outputCol.classList.add('open');
+    window.setOutputPanelOpen(true);
   }
+
+  document.getElementById('output-close-btn').addEventListener('click', function () {
+    outputCol.classList.remove('open');
+    window.setOutputPanelOpen(false);
+  });
 
   function setButtonsDisabled(disabled) {
     document.querySelectorAll('button').forEach(function (b) { b.disabled = disabled; });
   }
 
   // 跑一个耗时较长的 bridge 调用:按钮全部禁用防止重复点击,结果(不管成功
-  // 失败)都原样显示在输出区域——bridge 函数本身是同步阻塞返回最终结果的
-  // (对应计划里"不需要做成实时进度推送"),这里只是在等待期间给个提示文字。
-  function runAction(label, promise) {
+  // 失败)都原样显示在输出区域。
+  //
+  // bridge 函数本身(window.xxx())只是把调用投递给原生侧、立刻 resolve,不
+  // 代表操作真正完成——真正的结果由原生侧在后台 goroutine 跑完子进程后,
+  // 通过下面的 window.__onAsyncResult 回调异步推送过来。这么绕一层是因为
+  // go-webview2 的 Bind() 绑定函数是在原生窗口消息循环线程上同步调用的,如果
+  // 绑定函数自己同步等子进程跑完才返回,整个面板窗口在等待期间会完全冻结、
+  // 连关闭按钮都点不动——真机上点"测试连通性"复现过这个问题,ping 3 个包
+  // 加上 SC 服务重试之类耗时更长的操作(修复)会冻更久。
+  var pendingAction = null;
+  var pendingResolve = null;
+
+  window.__onAsyncResult = function (action, result) {
+    if (action !== pendingAction || !pendingResolve) { return; }
+    var resolve = pendingResolve;
+    pendingAction = null;
+    pendingResolve = null;
+    resolve(result);
+  };
+
+  function runAction(label, action, invoke) {
     setButtonsDisabled(true);
     showOutput(label + ' 进行中…');
-    return promise.then(function (result) {
+    pendingAction = action;
+    var done = new Promise(function (resolve) { pendingResolve = resolve; });
+    invoke();
+    return done.then(function (result) {
       showOutput((result.success ? '[成功] ' : '[失败] ') + result.output, result.success ? 'ok' : 'err');
       return result;
     }).catch(function (err) {
@@ -506,39 +714,157 @@
   document.getElementById('setup-btn').addEventListener('click', function () {
     var token = document.getElementById('token-input').value.trim();
     if (!token) { return; }
-    runAction('安装并加入网络', window.setupNetclient(token)).then(function () {
+    runAction('安装并加入网络', 'setupNetclient', function () { window.setupNetclient(token); }).then(function () {
       manualReconfigure = false;
       refreshStatus();
     });
   });
   document.getElementById('backup-btn').addEventListener('click', function () {
-    runAction('备份', window.backupNow());
+    runAction('备份', 'backupNow', function () { window.backupNow(); });
   });
   document.getElementById('repair-btn').addEventListener('click', function () {
-    runAction('修复', window.repairNow());
+    runAction('修复', 'repairNow', function () { window.repairNow(); });
   });
-  // 企业内部工具,测试目标是固定网段,不需要每次都让人手填 IP(之前用
-  // window.prompt() 问 IP,一是 WebView2 里渲染很怪,二是对不懂技术的同事来说
-  // 也是不必要的操作门槛)——目标 IP 在 main.go 里配置好,点一下直接测。
+  // 企业内部工具,测试目标是固定网段,平时点一下直接测、不用每次手填 IP
+  // (之前用 window.prompt() 问 IP,在 WebView2 里渲染很怪)——目标 IP 存在
+  // settings.json 里,通过下面的"设置"界面维护。
   document.getElementById('ping-btn').addEventListener('click', function () {
-    runAction('测试连通性', window.testConnectivity());
+    runAction('测试连通性', 'testConnectivity', function () { window.testConnectivity(); });
   });
   document.getElementById('diag-btn').addEventListener('click', function () {
-    runAction('生成诊断包', window.generateDiag());
+    runAction('生成诊断包', 'generateDiag', function () { window.generateDiag(); });
   });
+  var changelogView = document.getElementById('changelog-view');
+  var changelogList = document.getElementById('changelog-list');
+  var changelogLoaded = false;
+  // 更新日志和仪表盘共用同一个 body-scroll 容器、都不是绝对定位,如果状态轮询
+  // 在更新日志开着的时候把 dashView 的 hidden 也去掉,两块内容会同时渲染、
+  // 上下叠在一起——用这个标志跟 manualReconfigure/pendingAction 一样挡住轮询。
+  var viewingChangelog = false;
+
+  function escapeHtml(s) {
+    return String(s).replace(/[&<>"']/g, function (c) {
+      return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c];
+    });
+  }
+
+  document.getElementById('open-log-btn').addEventListener('click', function () {
+    viewingChangelog = true;
+    dashView.classList.add('hidden');
+    changelogView.classList.remove('hidden');
+    if (changelogLoaded) { return; }
+    window.getChangelog().then(function (entries) {
+      changelogLoaded = true;
+      changelogList.innerHTML = entries.map(function (e) {
+        var notes = (e.notes || []).map(function (n) { return '<li>' + escapeHtml(n) + '</li>'; }).join('');
+        return '<div class="changelog-entry">' +
+          '<div class="changelog-version-row">' +
+          '<span class="changelog-version">v' + escapeHtml(e.version) + '</span>' +
+          '<span class="changelog-date">' + escapeHtml(e.date) + '</span>' +
+          '</div>' +
+          '<ul class="changelog-notes">' + notes + '</ul>' +
+          '</div>';
+      }).join('');
+    });
+  });
+  document.getElementById('changelog-back-btn').addEventListener('click', function () {
+    viewingChangelog = false;
+    changelogView.classList.add('hidden');
+    dashView.classList.remove('hidden');
+  });
+
+  var settingsView = document.getElementById('settings-view');
+  var settingsIpList = document.getElementById('settings-ip-list');
+  // 跟 viewingChangelog 同样的道理:设置界面开着的时候不能让状态轮询把
+  // dashView 也显出来,两块内容会叠在一起。
+  var viewingSettings = false;
+
+  function addSettingsIpRow(value) {
+    var row = document.createElement('div');
+    row.className = 'settings-ip-row';
+
+    var input = document.createElement('input');
+    input.type = 'text';
+    input.value = value || '';
+    input.placeholder = '例如 100.67.147.4';
+
+    var removeBtn = document.createElement('button');
+    removeBtn.type = 'button';
+    removeBtn.className = 'link-btn settings-ip-remove';
+    removeBtn.textContent = '✕';
+    removeBtn.addEventListener('click', function () { row.remove(); });
+
+    row.appendChild(input);
+    row.appendChild(removeBtn);
+    settingsIpList.appendChild(row);
+  }
+
+  document.getElementById('settings-btn').addEventListener('click', function () {
+    viewingSettings = true;
+    dashView.classList.add('hidden');
+    settingsView.classList.remove('hidden');
+    window.getSettings().then(function (s) {
+      settingsIpList.innerHTML = '';
+      var targets = (s && s.connectivityTargets) || [];
+      if (targets.length === 0) { targets = ['']; }
+      targets.forEach(addSettingsIpRow);
+    });
+  });
+  document.getElementById('settings-add-btn').addEventListener('click', function () {
+    addSettingsIpRow('');
+  });
+  document.getElementById('settings-back-btn').addEventListener('click', function () {
+    viewingSettings = false;
+    settingsView.classList.add('hidden');
+    dashView.classList.remove('hidden');
+  });
+  document.getElementById('settings-save-btn').addEventListener('click', function () {
+    var targets = Array.prototype.map.call(
+      settingsIpList.querySelectorAll('input[type=text]'),
+      function (input) { return input.value; }
+    );
+    runAction('保存设置', 'saveSettings', function () { window.saveSettings(targets); }).then(function (result) {
+      if (result && result.success) {
+        viewingSettings = false;
+        settingsView.classList.add('hidden');
+        dashView.classList.remove('hidden');
+      }
+    });
+  });
+
   document.getElementById('reconfigure-btn').addEventListener('click', function () {
     manualReconfigure = true;
     dashView.classList.add('hidden');
     formView.classList.remove('hidden');
   });
+  // 真机复现过:面板每 3 秒轮询一次 getStatus,一旦某一轮读到"未配置"就立刻
+  // 切到安装表单,而表单上原来没有任何按钮能回到仪表盘——用户点"测试连通性"
+  // 的时候如果正好撞上这种切换,连操作结果都看不到(输出区域是仪表盘的一部分,
+  // 一起被隐藏了),还被卡在表单页出不去。这里加一个手动出口。
+  document.getElementById('back-btn').addEventListener('click', function () {
+    manualReconfigure = false;
+    refreshStatus();
+  });
+
+  // unconfiguredStreak:轮询读到"未配置"要连续命中 2 次(约 6 秒)才真的切换到
+  // 安装表单,单次没打中不算数——netclient 自己重写 netclient.json 时不是原子
+  // 操作,短暂读到文件不存在是可能发生的,不该让面板因为一次瞬时抖动就把已经
+  // 配置好的用户弹回安装表单。
+  var unconfiguredStreak = 0;
 
   function applyStatus(status) {
-    if (manualReconfigure) { return; }
+    // pendingAction 非空说明用户点的某个操作还没出结果,这时候不能让状态轮询
+    // 把界面从仪表盘切走——不然操作的输出区域跟着仪表盘一起被隐藏,用户点了
+    // "测试连通性"却什么反馈都看不到,还被留在切换后的界面上。
+    if (manualReconfigure || pendingAction || viewingChangelog || viewingSettings) { return; }
     if (!status.configured) {
+      unconfiguredStreak++;
+      if (unconfiguredStreak < 2) { return; }
       formView.classList.remove('hidden');
       dashView.classList.add('hidden');
       return;
     }
+    unconfiguredStreak = 0;
     formView.classList.add('hidden');
     dashView.classList.remove('hidden');
 

@@ -18,6 +18,7 @@ type Status struct {
 	ServerName    string `json:"serverName"`
 	LastBackup    string `json:"lastBackup"`    // 读 backup\last-good.txt,读不到就空字符串
 	ServiceStatus string `json:"serviceStatus"` // "Running"/"Stopped"/"Unknown"
+	Version       string `json:"version"`       // NetSentry 自身版本号,由 bindPanel 填充,不属于 Collect 聚合的"配置健康"信息
 }
 
 // Collect 聚合 guardconfig.Load + 服务状态 + last-good.txt,得到当前状态。

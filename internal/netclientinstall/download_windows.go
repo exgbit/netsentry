@@ -7,7 +7,8 @@ import (
 	"io"
 	"net/http"
 	"os"
-	"os/exec"
+
+	"netsentry/internal/winexec"
 )
 
 // installedNetclientExePath 是 netclient 自身 install 步骤把自己拷贝到的固定安装路径
@@ -24,11 +25,11 @@ func Run(token string) error {
 	}
 	defer os.Remove(tmpPath)
 
-	if out, err := exec.Command(tmpPath, "install").CombinedOutput(); err != nil {
+	if out, err := winexec.Hidden(tmpPath, "install").CombinedOutput(); err != nil {
 		return fmt.Errorf("netclient install: %w: %s", err, out)
 	}
 
-	if out, err := exec.Command(installedNetclientExePath, "join", "-t", token).CombinedOutput(); err != nil {
+	if out, err := winexec.Hidden(installedNetclientExePath, "join", "-t", token).CombinedOutput(); err != nil {
 		return fmt.Errorf("netclient join: %w: %s", err, out)
 	}
 
