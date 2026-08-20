@@ -8,13 +8,13 @@ import (
 	"testing"
 )
 
-const testExePath = `C:\ProgramData\netclient-guard\netclient-guard.exe`
+const testExePath = `C:\ProgramData\NetSentry\netsentry.exe`
 
 func TestBackupTaskArgs(t *testing.T) {
 	got := BackupTaskArgs(testExePath)
 	want := []string{
-		"/Create", "/TN", "NetclientGuardBackup",
-		"/TR", `"C:\ProgramData\netclient-guard\netclient-guard.exe" backup`,
+		"/Create", "/TN", "NetSentryBackup",
+		"/TR", `"C:\ProgramData\NetSentry\netsentry.exe" backup`,
 		"/SC", "MINUTE", "/MO", "30",
 		"/RU", "SYSTEM", "/RL", "HIGHEST", "/F",
 	}
@@ -26,8 +26,8 @@ func TestBackupTaskArgs(t *testing.T) {
 func TestWatchTaskArgs(t *testing.T) {
 	got := WatchTaskArgs(testExePath)
 	want := []string{
-		"/Create", "/TN", "NetclientGuardWatch",
-		"/TR", `"C:\ProgramData\netclient-guard\netclient-guard.exe" watch`,
+		"/Create", "/TN", "NetSentryWatch",
+		"/TR", `"C:\ProgramData\NetSentry\netsentry.exe" watch`,
 		"/SC", "MINUTE", "/MO", "5",
 		"/RU", "SYSTEM", "/RL", "HIGHEST", "/F",
 	}
@@ -39,8 +39,8 @@ func TestWatchTaskArgs(t *testing.T) {
 func TestWatchOnStartTaskArgs(t *testing.T) {
 	got := WatchOnStartTaskArgs(testExePath)
 	want := []string{
-		"/Create", "/TN", "NetclientGuardWatchOnStart",
-		"/TR", `"C:\ProgramData\netclient-guard\netclient-guard.exe" watch`,
+		"/Create", "/TN", "NetSentryWatchOnStart",
+		"/TR", `"C:\ProgramData\NetSentry\netsentry.exe" watch`,
 		"/SC", "ONSTART", "/DELAY", "0001:00",
 		"/RU", "SYSTEM", "/RL", "HIGHEST", "/F",
 	}
@@ -87,10 +87,10 @@ func TestAllTaskNames(t *testing.T) {
 		t.Fatalf("AllTaskNames() 长度 = %d, want 4", len(got))
 	}
 	want := []string{
-		"NetclientGuardBackup",
-		"NetclientGuardWatch",
-		"NetclientGuardWatchOnStart",
-		"NetclientGuardWatchOnResume",
+		"NetSentryBackup",
+		"NetSentryWatch",
+		"NetSentryWatchOnStart",
+		"NetSentryWatchOnResume",
 	}
 	for _, name := range want {
 		found := false

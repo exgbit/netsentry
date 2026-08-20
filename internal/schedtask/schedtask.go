@@ -10,7 +10,7 @@ import (
 // BackupTaskArgs 构造 schtasks /Create 用来注册"每 30 分钟跑一次 backup"任务的参数。
 func BackupTaskArgs(exePath string) []string {
 	return []string{
-		"/Create", "/TN", "NetclientGuardBackup",
+		"/Create", "/TN", "NetSentryBackup",
 		"/TR", `"` + exePath + `" backup`,
 		"/SC", "MINUTE", "/MO", "30",
 		"/RU", "SYSTEM", "/RL", "HIGHEST", "/F",
@@ -20,7 +20,7 @@ func BackupTaskArgs(exePath string) []string {
 // WatchTaskArgs 构造"每 5 分钟跑一次 watch"任务的参数。
 func WatchTaskArgs(exePath string) []string {
 	return []string{
-		"/Create", "/TN", "NetclientGuardWatch",
+		"/Create", "/TN", "NetSentryWatch",
 		"/TR", `"` + exePath + `" watch`,
 		"/SC", "MINUTE", "/MO", "5",
 		"/RU", "SYSTEM", "/RL", "HIGHEST", "/F",
@@ -30,7 +30,7 @@ func WatchTaskArgs(exePath string) []string {
 // WatchOnStartTaskArgs 构造"开机 1 分钟后跑一次 watch"任务的参数。
 func WatchOnStartTaskArgs(exePath string) []string {
 	return []string{
-		"/Create", "/TN", "NetclientGuardWatchOnStart",
+		"/Create", "/TN", "NetSentryWatchOnStart",
 		"/TR", `"` + exePath + `" watch`,
 		"/SC", "ONSTART", "/DELAY", "0001:00",
 		"/RU", "SYSTEM", "/RL", "HIGHEST", "/F",
@@ -87,14 +87,14 @@ func ResumeTriggerTaskXML(exePath string) string {
 // resumeTaskName 是"系统从睡眠唤醒时跑一次 watch"任务的名字。单独提出这个常量,
 // 是因为它不光在 AllTaskNames() 里出现,register_windows.go 的 /XML 注册流程也要用到
 // 同一个任务名——避免两处各写一份字面量导致改名时漏改、留下孤儿任务。
-const resumeTaskName = "NetclientGuardWatchOnResume"
+const resumeTaskName = "NetSentryWatchOnResume"
 
 // AllTaskNames 返回本工具注册的全部计划任务名,uninstall 时用来逐个删除。
 func AllTaskNames() []string {
 	return []string{
-		"NetclientGuardBackup",
-		"NetclientGuardWatch",
-		"NetclientGuardWatchOnStart",
+		"NetSentryBackup",
+		"NetSentryWatch",
+		"NetSentryWatchOnStart",
 		resumeTaskName,
 	}
 }

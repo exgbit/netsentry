@@ -11,7 +11,7 @@ import (
 	"os/exec"
 	"time"
 
-	"netclient-guard/internal/schedtask"
+	"netsentry/internal/schedtask"
 )
 
 const netclientDir = `C:\Program Files (x86)\Netclient\`
@@ -102,6 +102,6 @@ func SystemInfo(guardVersion string) (string, error) {
 	}
 
 	return fmt.Sprintf(
-		"Windows version: %s\nnetclient version: %s\nnetclient-guard version: %s\nhostname: %s\ngenerated at: %s\n",
+		"Windows version: %s\nnetclient version: %s\nNetSentry version: %s\nhostname: %s\ngenerated at: %s\n",
 		osVersion, netclientVersion, guardVersion, hostname, time.Now().Format(time.RFC3339)), nil
 }

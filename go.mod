@@ -1,4 +1,4 @@
-module netclient-guard
+module netsentry
 
 go 1.26.5
 

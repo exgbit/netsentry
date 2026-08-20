@@ -11,7 +11,7 @@ import (
 
 // selfCleanupTaskName 是本包注册的一次性清理任务名。一次性、自删除,不需要
 // 随机化避免冲突——万一上次调用失败留下了同名任务,/F 会直接覆盖。
-const selfCleanupTaskName = "NetclientGuardSelfCleanup"
+const selfCleanupTaskName = "NetSentrySelfCleanup"
 
 // selfCleanupDelay 是从注册计划任务到它触发之间预留的提前量。
 //

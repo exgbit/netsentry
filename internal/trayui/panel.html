@@ -2,7 +2,7 @@
 <html lang="zh-CN">
 <head>
 <meta charset="utf-8">
-<title>netclient-guard</title>
+<title>NetSentry</title>
 <style>
   * { box-sizing: border-box; }
   body {
@@ -68,7 +68,7 @@
 </style>
 </head>
 <body>
-  <h1>netclient-guard</h1>
+  <h1>NetSentry</h1>
 
   <div id="form-view">
     <p>尚未加入网络,输入 enrollment token 完成安装:</p>
@@ -88,6 +88,10 @@
     <button id="backup-btn">立即备份</button>
     <button id="repair-btn">立即修复</button>
     <button id="ping-btn">测试连通性</button>
+    <div id="ping-row" class="hidden">
+      <input type="text" id="ping-input" placeholder="输入要测试连通性的 IP 地址">
+      <button id="ping-confirm-btn">确认</button>
+    </div>
     <button id="diag-btn">生成诊断包</button>
     <button id="reconfigure-btn">重新配置</button>
   </div>
@@ -141,9 +145,17 @@
   document.getElementById('repair-btn').addEventListener('click', function () {
     runAction('修复', window.repairNow());
   });
+  // window.prompt() 在 WebView2 里渲染出来会被限制在面板窗口的小尺寸内、挤压
+  // 变形,不是正常的系统对话框(真机实测发现),改成面板内联的输入框——点击
+  // "测试连通性"展开输入行,点击"确认"才真正发起 testConnectivity 调用。
   document.getElementById('ping-btn').addEventListener('click', function () {
-    var ip = window.prompt('输入要测试连通性的 IP 地址:');
+    document.getElementById('ping-row').classList.remove('hidden');
+    document.getElementById('ping-input').focus();
+  });
+  document.getElementById('ping-confirm-btn').addEventListener('click', function () {
+    var ip = document.getElementById('ping-input').value.trim();
     if (!ip) { return; }
+    document.getElementById('ping-row').classList.add('hidden');
     runAction('测试连通性', window.testConnectivity(ip));
   });
   document.getElementById('diag-btn').addEventListener('click', function () {

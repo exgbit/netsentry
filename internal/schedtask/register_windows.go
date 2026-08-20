@@ -10,7 +10,7 @@ import (
 	"strings"
 )
 
-// Register 注册全部 4 个计划任务(exePath 是已安装到位的 netclient-guard.exe 路径)。
+// Register 注册全部 4 个计划任务(exePath 是已安装到位的 netsentry.exe 路径)。
 // 幂等:每次都用 /F 强制覆盖,重复调用安全。
 //
 // 单个任务注册失败不会让整体提前返回——尽量把能装的都装上,所有失败原因最后合并返回,
@@ -38,7 +38,7 @@ func Register(exePath string) error {
 // registerResumeTask 注册"系统从睡眠唤醒时跑一次 watch"任务。schtasks 的 /SC 系列 flag
 // 表达不了事件触发器,只能把任务定义 XML 写到临时文件,再用 /XML 传给 schtasks。
 func registerResumeTask(exePath string) error {
-	tmp, err := os.CreateTemp("", "netclient-guard-resume-task-*.xml")
+	tmp, err := os.CreateTemp("", "netsentry-resume-task-*.xml")
 	if err != nil {
 		return fmt.Errorf("create temp file for resume task xml: %w", err)
 	}

@@ -8,7 +8,7 @@ import (
 	"path/filepath"
 	"time"
 
-	"netclient-guard/internal/guardconfig"
+	"netsentry/internal/guardconfig"
 )
 
 // Action 描述 watch 决策后应该采取的动作。

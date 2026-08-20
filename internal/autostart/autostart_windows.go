@@ -9,7 +9,7 @@ import (
 )
 
 // Register 把 tray 加进当前用户登录启动项(exePath 是已安装到位的
-// netclient-guard-tray.exe 路径)。幂等:reg add 带 /f 强制覆盖,重复调用安全。
+// netsentry-tray.exe 路径)。幂等:reg add 带 /f 强制覆盖,重复调用安全。
 func Register(exePath string) error {
 	args := RegisterArgs(exePath)
 	if out, err := exec.Command("reg.exe", args...).CombinedOutput(); err != nil {

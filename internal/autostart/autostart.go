@@ -4,7 +4,7 @@ package autostart
 
 import "strings"
 
-const runValueName = "NetclientGuardTray"
+const runValueName = "NetSentryTray"
 
 // RegisterArgs 构造把 tray 加进当前用户登录启动项的 reg.exe 参数
 // (HKCU\Software\Microsoft\Windows\CurrentVersion\Run,不需要管理员权限的那个键,

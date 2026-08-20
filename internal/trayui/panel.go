@@ -7,7 +7,7 @@ import (
 
 // PanelConfig 是面板需要的全部依赖,由 main.go 组装后传给 ShowPanel。
 type PanelConfig struct {
-	ExePath        string // 已安装的 netclient-guard.exe 路径,面板里所有需要跑子命令的操作都 shell 到这个路径
+	ExePath        string // 已安装的 netsentry.exe 路径,面板里所有需要跑子命令的操作都 shell 到这个路径
 	NetclientDir   string
 	BackupDir      string
 	InstallLogPath string // guardDir + "install.log",setupNetclient 失败且没有可展示输出时,指引用户去看这个文件
@@ -25,7 +25,7 @@ type ActionResult struct {
 // runExeCommand 跑一次 <exePath> 加若干参数,把子进程的合并输出和退出结果打包
 // 成 ActionResult 返回给 JS——backupNow/repairNow/setupNetclient 都是这个模式:
 // tray 进程本身不提权、也不直接调用 backup/watch/netclientinstall 包,而是 shell
-// 到已安装的 netclient-guard.exe 重新走一遍 CLI 子命令,复用同一套已经测试过的
+// 到已安装的 netsentry.exe 重新走一遍 CLI 子命令,复用同一套已经测试过的
 // 代码路径,并且让 setup-netclient 自己的 ensureElevated() 正确处理提权边界。
 func runExeCommand(exePath string, args ...string) ActionResult {
 	out, err := exec.Command(exePath, args...).CombinedOutput()

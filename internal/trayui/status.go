@@ -8,7 +8,7 @@ import (
 	"sort"
 	"strings"
 
-	"netclient-guard/internal/guardconfig"
+	"netsentry/internal/guardconfig"
 )
 
 // Status 是面板/图标需要的全部信息,序列化成 JSON 传给前端。

@@ -5,14 +5,14 @@ import (
 	"testing"
 )
 
-const testExePath = `C:\ProgramData\netclient-guard\netclient-guard-tray.exe`
+const testExePath = `C:\ProgramData\NetSentry\netsentry-tray.exe`
 
 func TestRegisterArgs(t *testing.T) {
 	got := RegisterArgs(testExePath)
 	want := []string{
 		"add", `HKCU\Software\Microsoft\Windows\CurrentVersion\Run`,
-		"/v", "NetclientGuardTray", "/t", "REG_SZ",
-		"/d", `"C:\ProgramData\netclient-guard\netclient-guard-tray.exe" tray`, "/f",
+		"/v", "NetSentryTray", "/t", "REG_SZ",
+		"/d", `"C:\ProgramData\NetSentry\netsentry-tray.exe" tray`, "/f",
 	}
 	if !reflect.DeepEqual(got, want) {
 		t.Errorf("RegisterArgs() = %#v, want %#v", got, want)
@@ -23,7 +23,7 @@ func TestUnregisterArgs(t *testing.T) {
 	got := UnregisterArgs()
 	want := []string{
 		"delete", `HKCU\Software\Microsoft\Windows\CurrentVersion\Run`,
-		"/v", "NetclientGuardTray", "/f",
+		"/v", "NetSentryTray", "/f",
 	}
 	if !reflect.DeepEqual(got, want) {
 		t.Errorf("UnregisterArgs() = %#v, want %#v", got, want)

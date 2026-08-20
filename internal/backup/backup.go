@@ -8,7 +8,7 @@ import (
 	"path/filepath"
 	"time"
 
-	"netclient-guard/internal/guardconfig"
+	"netsentry/internal/guardconfig"
 )
 
 // Outcome 描述一次 backup 执行的结果。

@@ -8,7 +8,7 @@ import (
 	"testing"
 	"time"
 
-	"netclient-guard/internal/guardconfig"
+	"netsentry/internal/guardconfig"
 )
 
 func TestDecide(t *testing.T) {

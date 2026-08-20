@@ -28,7 +28,7 @@ func ShowPanel(cfg PanelConfig) {
 
 	w := webview2.NewWithOptions(webview2.WebViewOptions{
 		WindowOptions: webview2.WindowOptions{
-			Title:  "netclient-guard 面板",
+			Title:  "NetSentry 面板",
 			Width:  360,
 			Height: 480,
 			Center: true,
@@ -51,7 +51,7 @@ func ShowPanel(cfg PanelConfig) {
 //
 // getStatus 是唯一直接在 tray 进程内调用 trayui.Collect 的 bridge 函数(纯本地
 // 文件读取,不需要提权,没必要额外 shell 出一个子进程);其余几个都是 shell 到
-// 已安装的 netclient-guard.exe 重新走一遍 CLI 子命令,见 panel.go 里 runExeCommand
+// 已安装的 netsentry.exe 重新走一遍 CLI 子命令,见 panel.go 里 runExeCommand
 // 的文档注释。
 func bindPanel(w webview2.WebView, cfg PanelConfig) {
 	w.Bind("getStatus", func() (Status, error) {
