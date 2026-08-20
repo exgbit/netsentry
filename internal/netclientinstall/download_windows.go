@@ -7,6 +7,7 @@ import (
 	"io"
 	"net/http"
 	"os"
+	"time"
 
 	"netsentry/internal/winexec"
 )
@@ -54,11 +55,18 @@ func download(url string) (string, error) {
 	}
 	tmpPath := tmp.Name()
 
-	if _, err := io.Copy(tmp, resp.Body); err != nil {
+	// 直接在终端里手动跑 setup-netclient 的时候(真机反馈过),下载这几十 MB
+	// 的安装包期间命令行完全没有任何输出,看起来像卡住了。用 io.TeeReader 边
+	// 写文件边打点进度,\r 覆盖同一行、不刷屏——只有在真的走终端(不是面板
+	// shell 出的、被 CombinedOutput 整体缓冲吞掉的场景)时用户才看得到,但打印
+	// 本身没有额外成本,不需要区分场景特殊处理。
+	progress := &downloadProgress{total: resp.ContentLength}
+	if _, err := io.Copy(tmp, io.TeeReader(resp.Body, progress)); err != nil {
 		tmp.Close()
 		os.Remove(tmpPath)
 		return "", fmt.Errorf("write %s: %w", tmpPath, err)
 	}
+	progress.finish()
 	if err := tmp.Close(); err != nil {
 		os.Remove(tmpPath)
 		return "", fmt.Errorf("close %s: %w", tmpPath, err)
@@ -71,4 +79,40 @@ func download(url string) (string, error) {
 	}
 
 	return tmpPath, nil
+}
+
+// downloadProgress 实现 io.Writer,配合 io.TeeReader 在下载过程中打印进度。
+// total<=0(服务器没给 Content-Length,比如用了 chunked 编码)时退化成只显示
+// 已下载字节数,不算百分比。
+type downloadProgress struct {
+	total     int64
+	written   int64
+	lastPrint time.Time
+}
+
+func (p *downloadProgress) Write(b []byte) (int, error) {
+	n := len(b)
+	p.written += int64(n)
+	// 每 200ms 刷新一次,不是每写一个 chunk 就打印——那样量太大,终端会被刷屏
+	// 而不是看到一行在动。
+	if time.Since(p.lastPrint) >= 200*time.Millisecond {
+		p.print()
+		p.lastPrint = time.Now()
+	}
+	return n, nil
+}
+
+func (p *downloadProgress) print() {
+	mb := float64(p.written) / 1e6
+	if p.total > 0 {
+		fmt.Printf("\r下载 netclient 安装包: %.1f / %.1f MB (%.0f%%)", mb, float64(p.total)/1e6, float64(p.written)/float64(p.total)*100)
+	} else {
+		fmt.Printf("\r下载 netclient 安装包: %.1f MB", mb)
+	}
+}
+
+// finish 打印最终进度并换行,让下载之后的日志不会接着写在同一行末尾。
+func (p *downloadProgress) finish() {
+	p.print()
+	fmt.Println()
 }
