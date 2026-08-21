@@ -27,13 +27,34 @@ func Run(token string) error {
 	defer os.Remove(tmpPath)
 
 	if out, err := winexec.Hidden(tmpPath, "install").CombinedOutput(); err != nil {
-		return fmt.Errorf("netclient install: %w: %s", err, out)
+		return fmt.Errorf("netclient install: %w: %s", err, winexec.DecodeConsoleOutput(out))
 	}
 
 	if out, err := winexec.Hidden(installedNetclientExePath, "join", "-t", token).CombinedOutput(); err != nil {
-		return fmt.Errorf("netclient join: %w: %s", err, out)
+		return fmt.Errorf("netclient join: %w: %s", err, winexec.DecodeConsoleOutput(out))
 	}
 
+	return nil
+}
+
+// Uninstall 卸载已经安装的 netclient 本体(`netclient.exe uninstall`,真机验证过
+// v1.6.0 确实有这个子命令,会移除 netclient 的服务、配置文件和网络接口)。
+// netclient.exe 不存在时不算错误、直接跳过——可能本来就没装,或者已经被手动
+// 卸载过。这是 Run 的反向操作,配合 main.go 的 runUninstall 一起用,让
+// "netsentry uninstall" 也能把它联动安装的 netclient 一起清干净,而不是卸载
+// NetSentry 之后留下一个不再被管理、但还在运行的 netclient。
+func Uninstall() error {
+	if _, err := os.Stat(installedNetclientExePath); err != nil {
+		if os.IsNotExist(err) {
+			return nil
+		}
+		return fmt.Errorf("stat %s: %w", installedNetclientExePath, err)
+	}
+
+	out, err := winexec.Hidden(installedNetclientExePath, "uninstall").CombinedOutput()
+	if err != nil {
+		return fmt.Errorf("netclient uninstall: %w: %s", err, winexec.DecodeConsoleOutput(out))
+	}
 	return nil
 }
 

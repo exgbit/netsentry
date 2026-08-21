@@ -13,6 +13,17 @@ type ChangelogEntry struct {
 // 不倒填之前没有版本号track的历史。以后每发一个新版本,在最前面加一条。
 var Changelog = []ChangelogEntry{
 	{
+		Version: "0.5.5",
+		Date:    "2026-08-21",
+		Notes: []string{
+			"修复:卸载 NetSentry 不会连带卸载它联动安装的 netclient,留下一个不再被" +
+				"管理但还在运行的 netclient",
+			"修复:开机自启只在下次登录/重启时生效,装完当下看不到托盘图标",
+			"新增:开始菜单加入 NetSentry 快捷方式,不用再去 C:\\ProgramData 这个" +
+				"隐藏文件夹里找 exe",
+		},
+	},
+	{
 		Version: "0.5.4",
 		Date:    "2026-08-20",
 		Notes: []string{

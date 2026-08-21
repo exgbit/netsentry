@@ -27,16 +27,18 @@ import (
 	"netsentry/internal/schedtask"
 	"netsentry/internal/selfcleanup"
 	"netsentry/internal/settings"
+	"netsentry/internal/startmenu"
 	"netsentry/internal/sysreport"
 	"netsentry/internal/trayui"
 	"netsentry/internal/watch"
+	"netsentry/internal/winexec"
 	"netsentry/internal/winsvc"
 )
 
 const (
 	netclientDir = `C:\Program Files (x86)\Netclient\`
 	guardDir     = `C:\ProgramData\NetSentry\`
-	guardVersion = "0.5.4"
+	guardVersion = "0.5.5"
 )
 
 func backupDir() string        { return guardDir + `backup\` }
@@ -240,6 +242,17 @@ func onTrayReady() {
 
 func onTrayExit() {}
 
+// isTrayRunning 用 tasklist.exe 检查有没有已经在跑的 netsentry-tray.exe 进程——
+// doInstall 里立即拉起 tray 之前先查一遍,避免重装/升级时重复拉起第二个实例、
+// 在通知区堆出两个图标。
+func isTrayRunning() bool {
+	out, err := winexec.Hidden("tasklist.exe", "/FI", "IMAGENAME eq netsentry-tray.exe", "/NH").CombinedOutput()
+	if err != nil {
+		return false
+	}
+	return strings.Contains(winexec.DecodeConsoleOutput(out), "netsentry-tray.exe")
+}
+
 // restartTray 拉起一个新的 tray 进程,再让当前进程退出——处理面板卡死等
 // 极端情况的兜底手段。新进程启动失败也照常退出当前进程,不重试。
 func restartTray() {
@@ -341,7 +354,8 @@ func runInstall() {
 }
 
 // doInstall 依次执行:复制自身到安装目录 → 注册计划任务 → 添加 Defender 排除 →
-// (如果 netclient 已装好)建立备份基线 → 注册开机自启。
+// (如果 netclient 已装好)建立备份基线 → 注册开机自启 → 注册开始菜单快捷方式 →
+// 立即拉起一个 tray 进程(不用等下次登录/重启才看到托盘图标)。
 // "复制自身"失败会直接中止安装(见 copySelfToInstallDir 的文档注释——不能拿一个
 // 不持久的路径去注册计划任务/开机自启);除此之外,其余每一步失败都只记一条 WARN
 // 日志、继续跑完剩下的步骤——尽量把能装的都装上。
@@ -438,6 +452,31 @@ func doInstall() {
 		} else {
 			log("INFO", "registered autostart")
 		}
+
+		// 开始菜单快捷方式:C:\ProgramData 默认是隐藏文件夹,真机反馈过同事
+		// 装完之后自己去找 exe、根本找不到。这不影响自启注册是否成功,失败
+		// 只记 WARN,不影响其余安装步骤。
+		if err := startmenu.Register(trayExePath); err != nil {
+			log("WARN", "register start menu shortcut failed: "+err.Error())
+			warnings++
+		} else {
+			log("INFO", "registered start menu shortcut")
+		}
+
+		// 自启注册只在下次登录/重启时生效——真机反馈过"装完看不到托盘图标,
+		// 早上重启电脑才看到"。这里立即拉起一个 tray 进程,不用等重启。跑
+		// install 命令本身就需要交互式 UAC 提权(ensureElevated 会弹 UAC 对话
+		// 框),所以这里一定处在有交互式桌面的会话里,直接启动是安全的。先查
+		// 一下是不是已经有一个 tray 进程在跑(比如刚好在这次重装之前就已经在
+		// 运行),避免重复拉起两个图标。
+		if isTrayRunning() {
+			log("INFO", "tray already running, not launching a second instance")
+		} else if err := exec.Command(trayExePath, "tray").Start(); err != nil {
+			log("WARN", "launch tray immediately failed: "+err.Error())
+			warnings++
+		} else {
+			log("INFO", "launched tray")
+		}
 	}
 
 	if warnings == 0 {
@@ -532,10 +571,11 @@ func hasPurgeFlag(args []string) bool {
 	return false
 }
 
-// runUninstall 依次执行:自提权检查 → 注销计划任务 → 移除 Defender 排除 →
-// 注销开机自启。默认保留 backupDir() 下的历史备份;带 --purge 时最后连
-// guardDir 整个目录一起删——此时 guardDir 已经不存在,不再能写日志,
-// 所以"删除完成"这一步只打印到 stdout,不写日志文件。
+// runUninstall 依次执行:自提权检查 → 注销计划任务 → 卸载联动安装的 netclient
+// 本体 → 移除 Defender 排除 → 注销开机自启 → 注销开始菜单快捷方式。默认保留
+// backupDir() 下的历史备份;带 --purge 时最后连 guardDir 整个目录一起删——
+// 此时 guardDir 已经不存在,不再能写日志,所以"删除完成"这一步只打印到
+// stdout,不写日志文件。
 func runUninstall() {
 	ensureElevated()
 
@@ -554,6 +594,18 @@ func runUninstall() {
 		log("INFO", "unregistered scheduled tasks")
 	}
 
+	// 卸载联动安装的 netclient 本体——同事反馈过"卸载不干净,没把 netclient
+	// 一起卸载",既然 setup-netclient 是 NetSentry 自己下载安装的 netclient,
+	// 卸载 NetSentry 也该把它一起清掉,而不是留下一个不再被 NetSentry 管理、
+	// 但还在后台跑着的 netclient。放在计划任务注销之后、Defender 排除移除
+	// 之前——先停掉 NetSentryWatch 巡检,避免它在卸载过程中把 netclient 当成
+	// "配置损坏"尝试自愈,和真正卸载的动作打架。
+	if err := netclientinstall.Uninstall(); err != nil {
+		log("WARN", "uninstall netclient failed: "+err.Error())
+	} else {
+		log("INFO", "uninstalled netclient")
+	}
+
 	if err := defenderexcl.Remove(netclientDir); err != nil {
 		log("WARN", "remove Defender exclusion failed: "+err.Error())
 	} else {
@@ -570,6 +622,12 @@ func runUninstall() {
 		log("WARN", "unregister autostart failed: "+err.Error())
 	} else {
 		log("INFO", "unregistered autostart")
+	}
+
+	if err := startmenu.Unregister(); err != nil {
+		log("WARN", "unregister start menu shortcut failed: "+err.Error())
+	} else {
+		log("INFO", "unregistered start menu shortcut")
 	}
 
 	if !purge {
