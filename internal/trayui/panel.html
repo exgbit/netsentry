@@ -498,6 +498,51 @@
   .action-btn.ghost .action-icon { background: var(--ink-100); color: var(--ink-500); }
   .action-btn.ghost:hover:not(:disabled) { background: var(--ink-100); border-color: transparent; }
 
+  /* 卸载是破坏性操作(会断开 VPN、连带移除 netclient),用红色调和其余按钮
+     区分开,不能和"设置"这类日常操作长得一样不起眼。 */
+  .action-btn.danger .action-icon { background: var(--bad-50); color: var(--bad-600); }
+  .action-btn.danger:hover:not(:disabled) { background: var(--bad-50); border-color: var(--bad-50); }
+  .action-btn.danger .action-label { color: var(--bad-600); }
+
+  /* ============ 卸载确认 ============ */
+  .uninstall-warning {
+    padding: var(--sp-4);
+    background: var(--bad-50);
+    border: 1px solid rgba(225,29,72,0.18);
+    border-radius: var(--r-md);
+    color: var(--bad-600);
+    font-size: 12.5px;
+    font-weight: 500;
+    line-height: 1.6;
+    margin-bottom: var(--sp-5);
+  }
+  .uninstall-warning ul { margin: var(--sp-2) 0 0; padding-left: 18px; }
+  .uninstall-warning li { margin-bottom: 3px; }
+  .btn-danger {
+    width: 100%;
+    padding: 11px;
+    margin-top: var(--sp-2);
+    font-size: 13.5px;
+    font-weight: 700;
+    letter-spacing: 0.01em;
+    color: #fff;
+    background: linear-gradient(155deg, var(--bad-500), var(--bad-600));
+    border-radius: var(--r-sm);
+    box-shadow: 0 1px 2px rgba(225,29,72,0.10), 0 6px 16px -6px rgba(225,29,72,0.38);
+  }
+  .btn-danger:hover:not(:disabled) { background: linear-gradient(155deg, var(--bad-600), #9F1239); }
+  .btn-secondary {
+    width: 100%;
+    padding: 11px;
+    margin-top: var(--sp-2);
+    font-size: 13.5px;
+    font-weight: 700;
+    color: var(--ink-700);
+    background: var(--ink-100);
+    border-radius: var(--r-sm);
+  }
+  .btn-secondary:hover:not(:disabled) { background: var(--ink-200); }
+
   @keyframes dropdown {
     from { opacity: 0; transform: translateY(-4px); }
     to   { opacity: 1; transform: translateY(0); }
@@ -597,6 +642,10 @@
           <span class="action-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1Z"/></svg></span>
           <span class="action-label">设置</span>
         </button>
+        <button class="action-btn danger wide" id="uninstall-btn">
+          <span class="action-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4 7h16"/><path d="M9 7V4.5A1.5 1.5 0 0 1 10.5 3h3A1.5 1.5 0 0 1 15 4.5V7"/><path d="M6 7l1 12.5A1.5 1.5 0 0 0 8.5 21h7a1.5 1.5 0 0 0 1.5-1.5L18 7"/><path d="M10 11v6M14 11v6"/></svg></span>
+          <span class="action-label">卸载</span>
+        </button>
       </div>
 
       <div class="footer-hint">
@@ -625,6 +674,22 @@
       <div id="settings-ip-list"></div>
       <button class="link-btn" id="settings-add-btn" type="button">+ 添加一个 IP</button>
       <button class="btn-primary" id="settings-save-btn" type="button">保存</button>
+    </div>
+
+    <!-- ============ 卸载确认 ============ -->
+    <div id="uninstall-view" class="hidden">
+      <button class="link-btn form-back-btn" id="uninstall-back-btn" type="button">← 返回主界面</button>
+      <div class="section-label">卸载 NetSentry</div>
+      <div class="uninstall-warning">
+        确定要卸载吗?这会:
+        <ul>
+          <li>断开当前的企业网络连接(netclient 会被一并卸载)</li>
+          <li>停止自动备份/自愈,注销开机自启和开始菜单快捷方式</li>
+          <li>保留历史备份文件,不会删除</li>
+        </ul>
+      </div>
+      <button class="btn-danger" id="uninstall-confirm-btn" type="button">确认卸载</button>
+      <button class="btn-secondary" id="uninstall-cancel-btn" type="button">取消</button>
     </div>
 
   </div>
@@ -832,6 +897,38 @@
     });
   });
 
+  var uninstallView = document.getElementById('uninstall-view');
+  // 跟 viewingChangelog/viewingSettings 同样的道理,挡住状态轮询。
+  var viewingUninstall = false;
+
+  document.getElementById('uninstall-btn').addEventListener('click', function () {
+    viewingUninstall = true;
+    dashView.classList.add('hidden');
+    uninstallView.classList.remove('hidden');
+  });
+  document.getElementById('uninstall-back-btn').addEventListener('click', function () {
+    viewingUninstall = false;
+    uninstallView.classList.add('hidden');
+    dashView.classList.remove('hidden');
+  });
+  document.getElementById('uninstall-cancel-btn').addEventListener('click', function () {
+    viewingUninstall = false;
+    uninstallView.classList.add('hidden');
+    dashView.classList.remove('hidden');
+  });
+  // 无论成功失败,操作结束后都退回仪表盘(不是只在成功时才退,卸载确认页
+  // 留着让人重复点"确认卸载"没有意义)。真正卸载成功之后 netclient.json 很快
+  // 就不存在了,下一轮(或再下一轮,受 unconfiguredStreak 那个"连续两次才
+  // 切换"的防抖影响)状态轮询会自然把界面切到"加入企业网络"表单,这本身就是
+  // 卸载完之后正确的界面状态,这里不需要额外代码去模拟。
+  document.getElementById('uninstall-confirm-btn').addEventListener('click', function () {
+    runAction('卸载', 'uninstallNow', function () { window.uninstallNow(); }).then(function () {
+      viewingUninstall = false;
+      uninstallView.classList.add('hidden');
+      dashView.classList.remove('hidden');
+    });
+  });
+
   document.getElementById('reconfigure-btn').addEventListener('click', function () {
     manualReconfigure = true;
     dashView.classList.add('hidden');
@@ -856,7 +953,7 @@
     // pendingAction 非空说明用户点的某个操作还没出结果,这时候不能让状态轮询
     // 把界面从仪表盘切走——不然操作的输出区域跟着仪表盘一起被隐藏,用户点了
     // "测试连通性"却什么反馈都看不到,还被留在切换后的界面上。
-    if (manualReconfigure || pendingAction || viewingChangelog || viewingSettings) { return; }
+    if (manualReconfigure || pendingAction || viewingChangelog || viewingSettings || viewingUninstall) { return; }
     if (!status.configured) {
       unconfiguredStreak++;
       if (unconfiguredStreak < 2) { return; }

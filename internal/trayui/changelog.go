@@ -13,6 +13,14 @@ type ChangelogEntry struct {
 // 不倒填之前没有版本号track的历史。以后每发一个新版本,在最前面加一条。
 var Changelog = []ChangelogEntry{
 	{
+		Version: "0.5.6",
+		Date:    "2026-08-21",
+		Notes: []string{
+			"新增:面板加入'卸载'按钮,不用命令行也能完整卸载(会先弹出确认页面," +
+				"说明会断开企业网络连接、连带卸载 netclient,但保留历史备份)",
+		},
+	},
+	{
 		Version: "0.5.5",
 		Date:    "2026-08-21",
 		Notes: []string{

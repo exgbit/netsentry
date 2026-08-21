@@ -156,6 +156,16 @@ func bindPanel(w webview2.WebView, cfg PanelConfig) {
 			return generateDiag(cfg.ExePath)
 		})
 	})
+	// uninstallNow 直接复用 CLI 的 uninstall 子命令(不带 --purge,保留备份历史,
+	// 跟 CLI 默认行为一致)——它自己会走 ensureElevated() -> elevate.RelaunchElevated,
+	// 面板进程本身通常不是提权跑的,这里跟 setupNetclient 是同一个模式,真机上
+	// 会弹一次 UAC 提示,已经验证过这条路径能正常工作。面板 JS 侧在真正调用
+	// 这个之前会先走一个确认界面,不是点了按钮就立刻卸载。
+	w.Bind("uninstallNow", func() {
+		runAsync(w, "uninstallNow", func() ActionResult {
+			return runExeCommand(cfg.ExePath, "uninstall")
+		})
+	})
 }
 
 // runAsync 在后台 goroutine 里跑 fn,完成后通过 w.Dispatch/w.Eval 把结果推给
