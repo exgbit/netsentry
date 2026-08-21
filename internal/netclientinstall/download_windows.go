@@ -3,34 +3,73 @@
 package netclientinstall
 
 import (
+	"context"
 	"fmt"
 	"io"
 	"net/http"
 	"os"
+	"path/filepath"
 	"time"
 
 	"netsentry/internal/winexec"
 )
 
+// 下面几个超时给的是"正常情况绰绰有余、异常情况不至于无限等"的量级——真机踩过
+// 坑:一次错误的下载物(GUI 安装包)在隐藏窗口里等人点击,CombinedOutput 挂死
+// 9 分钟毫无报错,人工排查半天才定位到。正常的 netclient install(注册服务+拷贝
+// 文件)和 join(一次 HTTPS 注册请求+重启 daemon)真机实测都在几十秒内完成。
+const (
+	installTimeout   = 4 * time.Minute
+	joinTimeout      = 4 * time.Minute
+	uninstallTimeout = 3 * time.Minute
+)
+
+// runWithTimeout 以隐藏窗口+超时的方式跑一个子进程,超时时把进程杀掉并返回
+// 明确的超时错误(带上已经捕获的输出,方便定位卡在哪)。
+func runWithTimeout(timeout time.Duration, name string, args ...string) ([]byte, error) {
+	ctx, cancel := context.WithTimeout(context.Background(), timeout)
+	defer cancel()
+	out, err := winexec.HiddenContext(ctx, name, args...).CombinedOutput()
+	if ctx.Err() == context.DeadlineExceeded {
+		return out, fmt.Errorf("timed out after %s (进程已被强制结束,可能在等待一个不可见的交互界面或无响应的网络): %s", timeout, winexec.DecodeConsoleOutput(out))
+	}
+	return out, err
+}
+
 // installedNetclientExePath 是 netclient 自身 install 步骤把自己拷贝到的固定安装路径
 // (netclient 的 functions.Install() 逻辑决定的,不是本包能选择的)。
 const installedNetclientExePath = `C:\Program Files (x86)\Netclient\netclient.exe`
 
+// installedNetclientDir 是 installedNetclientExePath 所在目录,Uninstall 收尾清理时用。
+var installedNetclientDir = filepath.Dir(installedNetclientExePath)
+
 // Run 执行"下载 → 安装 → 加入网络"三步(不含联动安装 guard 那部分——那部分需要
 // main 包里的 doInstall/backup,放在 main.go 的 setup-netclient 处理逻辑里做,
 // 避免 netclientinstall 反过来依赖 main 包导致循环依赖)。
-func Run(token string) error {
+//
+// port/name 对应 netclient join 的 -p/--name 参数,跟内部同事手动 join 时用的参数
+// 保持一致(公司内网固定用 -p 51821;--name 用来在 Netmaker 管理端区分是谁的哪台
+// 设备,不给的话 netclient 自己生成的默认名字认不出是谁的机器)。两个都是空字符串
+// 时不传对应的 flag,交给 netclient 自己用默认值。
+func Run(token, port, name string) error {
 	tmpPath, err := download(DownloadURL(PinnedVersion))
 	if err != nil {
 		return fmt.Errorf("download netclient: %w", err)
 	}
 	defer os.Remove(tmpPath)
 
-	if out, err := winexec.Hidden(tmpPath, "install").CombinedOutput(); err != nil {
+	if out, err := runWithTimeout(installTimeout, tmpPath, "install"); err != nil {
 		return fmt.Errorf("netclient install: %w: %s", err, winexec.DecodeConsoleOutput(out))
 	}
 
-	if out, err := winexec.Hidden(installedNetclientExePath, "join", "-t", token).CombinedOutput(); err != nil {
+	args := []string{"join", "-t", token}
+	if port != "" {
+		args = append(args, "-p", port)
+	}
+	if name != "" {
+		args = append(args, "--name", name)
+	}
+	if out, err := runWithTimeout(joinTimeout, installedNetclientExePath, args...); err != nil {
 		return fmt.Errorf("netclient join: %w: %s", err, winexec.DecodeConsoleOutput(out))
 	}
 
@@ -43,6 +82,13 @@ func Run(token string) error {
 // 卸载过。这是 Run 的反向操作,配合 main.go 的 runUninstall 一起用,让
 // "netsentry uninstall" 也能把它联动安装的 netclient 一起清干净,而不是卸载
 // NetSentry 之后留下一个不再被管理、但还在运行的 netclient。
+//
+// 真机验证过:netclient 自己的 uninstall 会删掉服务/配置/日志,但删不掉自己
+// 这个正在被执行的 netclient.exe 文件本身(Windows 不允许进程删除自己的镜像
+// 文件,NetSentry 当初解决自身同样的问题时也踩过这个坑,见 internal/selfcleanup)。
+// 上面 CombinedOutput() 已经等 netclient.exe uninstall 这个子进程完全退出才会
+// 返回,它对自身文件的句柄这时候已经释放,轮不到 NetSentry(不是同一个进程)
+// 自己再去检测——直接删掉剩下的整个目录即可,不需要额外的进程存活检查。
 func Uninstall() error {
 	if _, err := os.Stat(installedNetclientExePath); err != nil {
 		if os.IsNotExist(err) {
@@ -51,9 +97,13 @@ func Uninstall() error {
 		return fmt.Errorf("stat %s: %w", installedNetclientExePath, err)
 	}
 
-	out, err := winexec.Hidden(installedNetclientExePath, "uninstall").CombinedOutput()
+	out, err := runWithTimeout(uninstallTimeout, installedNetclientExePath, "uninstall")
 	if err != nil {
 		return fmt.Errorf("netclient uninstall: %w: %s", err, winexec.DecodeConsoleOutput(out))
+	}
+
+	if err := os.RemoveAll(installedNetclientDir); err != nil {
+		return fmt.Errorf("remove leftover %s: %w", installedNetclientDir, err)
 	}
 	return nil
 }

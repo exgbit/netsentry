@@ -38,7 +38,7 @@ import (
 const (
 	netclientDir = `C:\Program Files (x86)\Netclient\`
 	guardDir     = `C:\ProgramData\NetSentry\`
-	guardVersion = "0.5.7"
+	guardVersion = "0.5.8"
 )
 
 func backupDir() string        { return guardDir + `backup\` }
@@ -720,29 +720,56 @@ func entriesToDeleteExceptSelf(names []string, keepNames []string) []string {
 	return keep
 }
 
-// tokenFlag 在参数列表里查找 -t 后面跟的值(enrollment token)。找不到 -t 或者
-// -t 后面没有值,返回空字符串和 false。
-func tokenFlag(args []string) (string, bool) {
+// defaultNetclientJoinPort 是内部同事手动 join 时固定会用的端口——公司内网这个
+// 端口有实际意义(不是随便选的默认值),不显式传 -p 的时候用这个,保证不管是
+// 命令行手动跑还是走面板"加入企业网络"表单,最终效果都跟同事自己手动 join 一致。
+const defaultNetclientJoinPort = "51821"
+
+// stringFlag 在参数列表里查找 name(比如 "-p"/"--name")后面跟的值。找不到该
+// flag 或者它后面没有值,返回空字符串和 false。
+func stringFlag(args []string, name string) (string, bool) {
 	for i, a := range args {
-		if a == "-t" && i+1 < len(args) {
+		if a == name && i+1 < len(args) {
 			return args[i+1], true
 		}
 	}
 	return "", false
 }
 
+// tokenFlag 在参数列表里查找 -t 后面跟的值(enrollment token)。找不到 -t 或者
+// -t 后面没有值,返回空字符串和 false。
+func tokenFlag(args []string) (string, bool) {
+	return stringFlag(args, "-t")
+}
+
 // runSetupNetclient 依次执行:自提权检查 → 下载/安装/加入网络(netclientinstall.Run)
 // → 联动装 guard(doInstall,复用 Task 6 的安装逻辑,不重复触发 UAC)→ 建立备份基线。
+//
+// -p/--name 都是可选的:不传 -p 时用 defaultNetclientJoinPort;不传 --name 时用
+// 本机 hostname——不管哪种情况都保证加入网络之后在 Netmaker 管理端能认出是哪台
+// 设备,不需要面板"加入企业网络"表单额外收集这两项、也不强求每个人记得手动加
+// 这两个 flag。
 func runSetupNetclient() {
 	ensureElevated()
 
 	token, ok := tokenFlag(os.Args[2:])
 	if !ok {
-		fmt.Println("usage: netsentry setup-netclient -t <token>")
+		fmt.Println("usage: netsentry setup-netclient -t <token> [-p <port>] [--name <device-name>]")
 		os.Exit(1)
 	}
 
-	if err := netclientinstall.Run(token); err != nil {
+	port, ok := stringFlag(os.Args[2:], "-p")
+	if !ok {
+		port = defaultNetclientJoinPort
+	}
+	name, ok := stringFlag(os.Args[2:], "--name")
+	if !ok {
+		if h, err := os.Hostname(); err == nil {
+			name = h
+		}
+	}
+
+	if err := netclientinstall.Run(token, port, name); err != nil {
 		fmt.Println("setup-netclient error:", err)
 		os.Exit(1)
 	}

@@ -4,6 +4,7 @@
 package winexec
 
 import (
+	"context"
 	"os/exec"
 	"syscall"
 
@@ -25,6 +26,17 @@ const createNoWindow = 0x08000000
 // 上不分配控制台,不会触发这条路径。
 func Hidden(name string, args ...string) *exec.Cmd {
 	cmd := exec.Command(name, args...)
+	cmd.SysProcAttr = &syscall.SysProcAttr{HideWindow: true, CreationFlags: createNoWindow}
+	return cmd
+}
+
+// HiddenContext 是 Hidden 的带超时/取消版本:ctx 到期时子进程会被强制杀掉,
+// CombinedOutput/Run 随之带 context 错误返回。给"子进程可能无限期不退出"的调用
+// 用——真机踩过坑:一个不合适的安装包在隐藏窗口里弹了个没人看得见的交互界面,
+// CombinedOutput 就跟着无限等待,整条调用链挂死 9 分钟都没有任何报错。凡是外部
+// 下载来的、行为不完全受本项目控制的可执行文件,都应该走这个而不是裸的 Hidden。
+func HiddenContext(ctx context.Context, name string, args ...string) *exec.Cmd {
+	cmd := exec.CommandContext(ctx, name, args...)
 	cmd.SysProcAttr = &syscall.SysProcAttr{HideWindow: true, CreationFlags: createNoWindow}
 	return cmd
 }

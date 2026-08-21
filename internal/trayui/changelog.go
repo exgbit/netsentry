@@ -13,6 +13,20 @@ type ChangelogEntry struct {
 // 不倒填之前没有版本号track的历史。以后每发一个新版本,在最前面加一条。
 var Changelog = []ChangelogEntry{
 	{
+		Version: "0.5.8",
+		Date:    "2026-08-21",
+		Notes: []string{
+			"修复:setup-netclient 下载的文件从 netclientbundle.exe(带 GUI 的图形安装包," +
+				"在无人值守环境会卡在看不见的安装界面上无限等待)换成 netclient-windows-amd64.exe" +
+				"(纯 CLI,真机验证过完整走通下载→安装→加入网络)",
+			"新增:netclient 的 install/join/uninstall 子进程调用全部加上超时保护," +
+				"再出现卡死会明确报错退出,不会无限等待",
+			"新增:setup-netclient 支持 -p(默认 51821)和 --name(默认本机主机名)," +
+				"和同事手动 join 的参数习惯保持一致",
+			"修复:卸载 netclient 后残留的 netclient.exe 文件和目录现在会被一并清掉",
+		},
+	},
+	{
 		Version: "0.5.7",
 		Date:    "2026-08-21",
 		Notes: []string{
