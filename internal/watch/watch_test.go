@@ -17,18 +17,21 @@ func TestDecide(t *testing.T) {
 		consistent      bool
 		serviceRunning  bool
 		backupAvailable bool
+		brokerStuck     bool
 		want            Action
 	}{
-		{"all healthy", true, true, true, ActionNone},
-		{"consistent but stopped", true, false, true, ActionStartService},
-		{"inconsistent with backup", false, true, true, ActionRestoreAndStart},
-		{"inconsistent without backup", false, true, false, ActionAlertNoBackup},
-		{"inconsistent stopped with backup", false, false, true, ActionRestoreAndStart},
+		{"all healthy", true, true, true, false, ActionNone},
+		{"consistent but stopped", true, false, true, false, ActionStartService},
+		{"inconsistent with backup", false, true, true, false, ActionRestoreAndStart},
+		{"inconsistent without backup", false, true, false, false, ActionAlertNoBackup},
+		{"inconsistent stopped with backup", false, false, true, false, ActionRestoreAndStart},
+		{"running but stuck reconnecting to broker", true, true, true, true, ActionRestartStuckService},
+		{"stopped takes priority over stuck flag", true, false, true, true, ActionStartService},
 	}
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {
 			load := guardconfig.LoadResult{Consistent: c.consistent}
-			if got := Decide(load, c.serviceRunning, c.backupAvailable); got != c.want {
+			if got := Decide(load, c.serviceRunning, c.backupAvailable, c.brokerStuck); got != c.want {
 				t.Errorf("Decide(...) = %v, want %v", got, c.want)
 			}
 		})
@@ -48,6 +51,13 @@ type fakeService struct {
 
 	logSequences [][][]byte
 	pollCounts   []int
+
+	// steadyStateLog 是 Run() 在决定要不要 Start 之前、检查"服务是不是卡在跟
+	// broker 断线"时读到的日志内容——这个检查发生在 startCalls 还是 0 的时候
+	// (还没决定要不要 Start,不涉及 Start 之后的健康检查轮询)。默认零值 nil,
+	// 配合 IsBrokerStuck(nil)==false(没有卡死信号),不影响原本不关心这个检查
+	// 的既有测试。
+	steadyStateLog []byte
 }
 
 func (f *fakeService) IsRunning() (bool, error) { return f.running, nil }
@@ -61,12 +71,12 @@ func (f *fakeService) Start() error {
 
 func (f *fakeService) Stop() error { f.stopCalls++; f.running = false; return nil }
 
-func (f *fakeService) LogSize() (int64, error) { return 0, nil }
+func (f *fakeService) LogSize() (int64, error) { return int64(len(f.steadyStateLog)), nil }
 
 func (f *fakeService) ReadLogFrom(offset int64) ([]byte, error) {
 	attempt := f.startCalls
 	if attempt == 0 {
-		return nil, nil
+		return f.steadyStateLog, nil
 	}
 	if len(f.logSequences) < attempt || f.logSequences[attempt-1] == nil {
 		return []byte(brokerConnectedSignal), nil
@@ -80,6 +90,13 @@ func (f *fakeService) ReadLogFrom(offset int64) ([]byte, error) {
 	return seq[idx], nil
 }
 
+// fakeTunnel 是 TunnelChecker 的假实现,供测试使用。零值(reachable: false)对应"隧道也确认
+// 不通",配合 IsBrokerStuck 触发重启;reachable: true 对应"隧道其实是通的"这个真机事故复盘出
+// 来的场景,用来验证这种情况下不会去碰服务。
+type fakeTunnel struct{ reachable bool }
+
+func (f fakeTunnel) TunnelReachable() bool { return f.reachable }
+
 func TestRun_RestoresFromBackupWhenInconsistent(t *testing.T) {
 	netclientDir := t.TempDir()
 	backupDir := filepath.Join(t.TempDir(), "backup")
@@ -91,7 +108,7 @@ func TestRun_RestoresFromBackupWhenInconsistent(t *testing.T) {
 	mustWrite(t, filepath.Join(backupDir, "servers.json.good"), `{"tomtoc.cn":{"mqid":"good","name":"tomtoc.cn"}}`)
 
 	svc := &fakeService{running: true}
-	result, err := Run(netclientDir, backupDir, svc)
+	result, err := Run(netclientDir, backupDir, svc, fakeTunnel{})
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -122,7 +139,7 @@ func TestRun_LeavesServiceStoppedOnPartialRestoreFailure(t *testing.T) {
 	}
 
 	svc := &fakeService{running: true}
-	result, err := Run(netclientDir, backupDir, svc)
+	result, err := Run(netclientDir, backupDir, svc, fakeTunnel{})
 	if err == nil {
 		t.Fatalf("expected error from failed servers.json restore, got nil (result=%+v)", result)
 	}
@@ -149,7 +166,7 @@ func TestRun_AlertsWhenNoBackupAvailable(t *testing.T) {
 	mustWrite(t, filepath.Join(netclientDir, "servers.json"), `{"tomtoc.cn":{"mqid":"good","name":"tomtoc.cn"}}`)
 
 	svc := &fakeService{running: true}
-	result, err := Run(netclientDir, backupDir, svc)
+	result, err := Run(netclientDir, backupDir, svc, fakeTunnel{})
 	if err == nil {
 		t.Fatalf("expected error for no-backup-available alert, got nil (result=%+v)", result)
 	}
@@ -169,7 +186,7 @@ func TestRun_StartsStoppedServiceWhenConsistent(t *testing.T) {
 	mustWrite(t, filepath.Join(netclientDir, "servers.json"), `{"tomtoc.cn":{"mqid":"abc","name":"tomtoc.cn"}}`)
 
 	svc := &fakeService{running: false}
-	result, err := Run(netclientDir, backupDir, svc)
+	result, err := Run(netclientDir, backupDir, svc, fakeTunnel{})
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -178,6 +195,81 @@ func TestRun_StartsStoppedServiceWhenConsistent(t *testing.T) {
 	}
 	if svc.startCalls != 1 {
 		t.Errorf("expected exactly one start call, got %d", svc.startCalls)
+	}
+}
+
+func TestRun_NoActionWhenRunningAndBrokerHealthy(t *testing.T) {
+	netclientDir := t.TempDir()
+	backupDir := filepath.Join(t.TempDir(), "backup")
+
+	mustWrite(t, filepath.Join(netclientDir, "netclient.json"), `{"id":"abc"}`)
+	mustWrite(t, filepath.Join(netclientDir, "servers.json"), `{"tomtoc.cn":{"mqid":"abc","name":"tomtoc.cn"}}`)
+
+	svc := &fakeService{running: true, steadyStateLog: []byte("...mqtt connect handler...")}
+	result, err := Run(netclientDir, backupDir, svc, fakeTunnel{})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if result.Action != ActionNone {
+		t.Fatalf("got action=%v, want ActionNone", result.Action)
+	}
+	if svc.startCalls != 0 || svc.stopCalls != 0 {
+		t.Errorf("must not touch a healthy running service, got stop=%d start=%d", svc.stopCalls, svc.startCalls)
+	}
+}
+
+// TestRun_RestartsServiceStuckReconnectingToBroker 复现真机诊断包发现的场景:sc query
+// 显示 Running、配置一致,winsw.out.log 里最后一次跟 broker 相关的信号是失败,而且 ping
+// 内网目标也确认不通(fakeTunnel{reachable: false})——这时候才真正值得重启修复。
+func TestRun_RestartsServiceStuckReconnectingToBroker(t *testing.T) {
+	netclientDir := t.TempDir()
+	backupDir := filepath.Join(t.TempDir(), "backup")
+
+	mustWrite(t, filepath.Join(netclientDir, "netclient.json"), `{"id":"abc"}`)
+	mustWrite(t, filepath.Join(netclientDir, "servers.json"), `{"tomtoc.cn":{"mqid":"abc","name":"tomtoc.cn"}}`)
+
+	svc := &fakeService{
+		running:        true,
+		steadyStateLog: []byte("unable to connect to broker, retrying ..."),
+	}
+	result, err := Run(netclientDir, backupDir, svc, fakeTunnel{reachable: false})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if result.Action != ActionRestartStuckService {
+		t.Fatalf("got action=%v, want ActionRestartStuckService", result.Action)
+	}
+	if svc.stopCalls != 1 || svc.startCalls != 1 {
+		t.Errorf("expected exactly one stop and one start, got stop=%d start=%d", svc.stopCalls, svc.startCalls)
+	}
+}
+
+// TestRun_DoesNotRestartWhenBrokerStuckButTunnelReachable 是真机事故复盘出来的回归测试:
+// 2026-08-21 部署过一版没有这个门槛检查的代码,真机上日志判定"卡死"、直接重启了服务,
+// 结果连着 3 分钟反复 Stop+Start 却始终没能让 broker 重新连上(说明这次根本不是"重启能
+// 解开的卡死",而是 broker 那边本身就连不上),期间还让原本工作正常的隧道跟着抖动、
+// SSH 断续了好几次。回退后确认:ping 内网目标全程都是通的——broker 卡死不等于隧道跟着
+// 坏。这个测试锁定这个行为:隧道确认可达时,哪怕日志显示卡死,也不能去碰服务。
+func TestRun_DoesNotRestartWhenBrokerStuckButTunnelReachable(t *testing.T) {
+	netclientDir := t.TempDir()
+	backupDir := filepath.Join(t.TempDir(), "backup")
+
+	mustWrite(t, filepath.Join(netclientDir, "netclient.json"), `{"id":"abc"}`)
+	mustWrite(t, filepath.Join(netclientDir, "servers.json"), `{"tomtoc.cn":{"mqid":"abc","name":"tomtoc.cn"}}`)
+
+	svc := &fakeService{
+		running:        true,
+		steadyStateLog: []byte("unable to connect to broker, retrying ..."),
+	}
+	result, err := Run(netclientDir, backupDir, svc, fakeTunnel{reachable: true})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if result.Action != ActionNone {
+		t.Fatalf("got action=%v, want ActionNone (tunnel is reachable, must not restart)", result.Action)
+	}
+	if svc.stopCalls != 0 || svc.startCalls != 0 {
+		t.Errorf("must not touch the service when the tunnel is reachable, got stop=%d start=%d", svc.stopCalls, svc.startCalls)
 	}
 }
 
@@ -195,6 +287,28 @@ func TestIsBrokerConnected(t *testing.T) {
 		t.Run(c.name, func(t *testing.T) {
 			if got := IsBrokerConnected(c.tail); got != c.want {
 				t.Errorf("IsBrokerConnected(%q) = %v, want %v", c.tail, got, c.want)
+			}
+		})
+	}
+}
+
+func TestIsBrokerStuck(t *testing.T) {
+	cases := []struct {
+		name string
+		tail []byte
+		want bool
+	}{
+		{"only failure signal", []byte("unable to connect to broker, retrying ..."), true},
+		{"only success signal", []byte(`{"msg":"mqtt connect handler"}`), false},
+		{"failure then later success", []byte("unable to connect to broker\n...\nmqtt connect handler"), false},
+		{"success then later failure", []byte("mqtt connect handler\n...\nunable to connect to broker, retrying"), true},
+		{"neither signal present", []byte("completed pull for server tomtoc.cn"), false},
+		{"empty", nil, false},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			if got := IsBrokerStuck(c.tail); got != c.want {
+				t.Errorf("IsBrokerStuck(%q) = %v, want %v", c.tail, got, c.want)
 			}
 		})
 	}

@@ -13,6 +13,17 @@ type ChangelogEntry struct {
 // 不倒填之前没有版本号track的历史。以后每发一个新版本,在最前面加一条。
 var Changelog = []ChangelogEntry{
 	{
+		Version: "0.5.7",
+		Date:    "2026-08-21",
+		Notes: []string{
+			"新增:自动检测'服务在跑但持续连不上 broker'这种自愈之前发现不了的状态" +
+				"(真机诊断包发现的盲区,之前只看 sc query 是否 Running)",
+			"修复:上面这个检测加了门槛——只有 ping 内网目标也确认不通时才会重启服务," +
+				"避免 broker 卡但隧道其实正常时被误重启、反而把好的连接搞出抖动" +
+				"(真机上出过这个问题,已回退验证并加上门槛检查修复)",
+		},
+	},
+	{
 		Version: "0.5.6",
 		Date:    "2026-08-21",
 		Notes: []string{

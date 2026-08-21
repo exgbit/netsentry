@@ -19,6 +19,11 @@ const (
 	ActionStartService
 	ActionRestoreAndStart
 	ActionAlertNoBackup
+	// ActionRestartStuckService 对应"服务本身没死(sc query 显示 Running),但持续
+	// 连不上 broker"这种状态——真机诊断包发现过的一个盲区:之前只在"服务从停止
+	// 状态启动"这个时机才会检查 broker 连通性,一个本来连着、后来断线卡死重连
+	// 循环的服务会一直被判定为"健康",永远不会触发自愈。
+	ActionRestartStuckService
 )
 
 func (a Action) String() string {
@@ -31,13 +36,17 @@ func (a Action) String() string {
 		return "restore-and-start"
 	case ActionAlertNoBackup:
 		return "alert-no-backup"
+	case ActionRestartStuckService:
+		return "restart-stuck-service"
 	default:
 		return "unknown"
 	}
 }
 
-// Decide 根据配置一致性、服务是否在运行、是否存在可用的已知良好备份,决定要采取的动作。
-func Decide(load guardconfig.LoadResult, serviceRunning, backupAvailable bool) Action {
+// Decide 根据配置一致性、服务是否在运行、是否存在可用的已知良好备份、以及服务在跑的情况下
+// 是不是卡在跟 broker 断线重连,决定要采取的动作。brokerStuck 只在 serviceRunning 为 true
+// 时才有意义(服务都没跑,谈不上"卡在重连"),调用方对此负责,这里不做防御性检查。
+func Decide(load guardconfig.LoadResult, serviceRunning, backupAvailable, brokerStuck bool) Action {
 	if !load.Consistent {
 		if backupAvailable {
 			return ActionRestoreAndStart
@@ -46,6 +55,9 @@ func Decide(load guardconfig.LoadResult, serviceRunning, backupAvailable bool) A
 	}
 	if !serviceRunning {
 		return ActionStartService
+	}
+	if brokerStuck {
+		return ActionRestartStuckService
 	}
 	return ActionNone
 }
@@ -69,6 +81,18 @@ type ServiceController interface {
 	ReadLogFrom(offset int64) ([]byte, error)
 }
 
+// TunnelChecker 抽象"数据隧道本身是否可用"的检查(实际实现是 ping 一个配置好的内网目标),
+// 方便测试用假实现替代真的网络请求。
+//
+// 真机事故复盘过:netclient 连不上 broker(MQTT 控制通道,用来推送配置/节点更新)不代表
+// WireGuard 数据隧道也跟着不能用——broker 卡死重连的时候实测过 ping 内网目标一直是通的。
+// 貌似"卡死"其实只影响控制通道,重启服务对它没用(真机上 3 次重试都没能恢复,同时还让
+// 本来正常工作的隧道跟着抖动了好几分钟)。所以"卡死"不能单独作为重启的理由,必须先确认
+// 隧道本身也确实不可用,再动手修——这时候重启才是净收益为正的操作。
+type TunnelChecker interface {
+	TunnelReachable() bool
+}
+
 // Result 描述一次 watch 执行的结果。
 //
 // 仅当 Run 返回的 error 为 nil 时,Result.Action 才代表"实际发生的动作"。error 非 nil 时,
@@ -85,15 +109,40 @@ type Result struct {
 // 恢复了连接"的判定依据,而不是仅凭服务状态是 Running。
 const brokerConnectedSignal = "mqtt connect handler"
 
+// brokerFailSignal 是 netclient 卡在重连 broker 时反复打印的日志,真机诊断包里两种形式都见过:
+// 未结构化的 `unable to connect to broker, retrying ...` 和结构化的
+// `{"msg":"unable to connect to broker",...}`,这个子串两种都能匹配到。
+const brokerFailSignal = "unable to connect to broker"
+
 // IsBrokerConnected 判断一段日志内容里是否包含 netclient 成功连上 broker 的信号。
 func IsBrokerConnected(logTail []byte) bool {
 	return bytes.Contains(logTail, []byte(brokerConnectedSignal))
+}
+
+// IsBrokerStuck 判断日志尾部里,"连接失败"信号是不是比"连接成功"信号更晚出现——也就是
+// "这段日志里最后一次跟 broker 相关的事件是失败,还没等到后续的成功恢复"。不要求"从来没
+// 连上过":哪怕之前连过、后来断线卡进了重连死循环,只要失败在后,就算卡死。这段日志里压根
+// 没出现过失败信号时,不算卡死(可能这段时间根本没发生过重连尝试,不代表有问题)。
+func IsBrokerStuck(logTail []byte) bool {
+	lastFail := bytes.LastIndex(logTail, []byte(brokerFailSignal))
+	if lastFail == -1 {
+		return false
+	}
+	lastOK := bytes.LastIndex(logTail, []byte(brokerConnectedSignal))
+	return lastFail > lastOK
 }
 
 const (
 	defaultHealthCheckAttempts = 3
 	defaultHealthCheckTimeout  = 60 * time.Second
 	defaultHealthCheckInterval = 3 * time.Second
+
+	// stuckCheckTailBytes 是判断"服务是否卡在重连 broker"时,从 winsw.out.log 尾部读取的字节数。
+	// 只看最近这一段、不读全量日志——这个日志是追加写入、会随时间无限增长(netclient 自己的服务
+	// 配置显式设了 <log mode="append" />),watch 每 5 分钟跑一次、可能连续跑几个月,每次都读全量
+	// 文件代价会越来越大,而我们只关心"最近有没有卡住",不需要历史。16KB 按真机日志里每轮重连
+	// 大约 300~400 字节估算,能覆盖大约 20~30 分钟的重连历史,watch 5 分钟一轮绰绰有余。
+	stuckCheckTailBytes = 16 * 1024
 )
 
 // startAndVerifyHealthy 假设服务当前已经是停止状态,启动它并轮询日志确认真的连上了 broker;
@@ -134,9 +183,10 @@ func startAndVerifyHealthy(svc ServiceController, maxAttempts int, checkTimeout,
 	return lastErr
 }
 
-// Run 读取 netclientDir 下的配置,结合服务状态和备份可用性做出决策并执行。
-// 返回 error 时(ActionAlertNoBackup)调用方应以非零退出码结束,让计划任务运行历史能反映"修复失败"。
-func Run(netclientDir, backupDir string, svc ServiceController) (Result, error) {
+// Run 读取 netclientDir 下的配置,结合服务状态、备份可用性、以及服务在跑的情况下是否卡在
+// 重连 broker(且隧道本身确实也不可用),做出决策并执行。返回 error 时(ActionAlertNoBackup)
+// 调用方应以非零退出码结束,让计划任务运行历史能反映"修复失败"。
+func Run(netclientDir, backupDir string, svc ServiceController, tunnel TunnelChecker) (Result, error) {
 	load, err := guardconfig.Load(netclientDir)
 	if err != nil {
 		return Result{}, err
@@ -151,7 +201,33 @@ func Run(netclientDir, backupDir string, svc ServiceController) (Result, error) 
 		return Result{}, fmt.Errorf("query service status: %w", err)
 	}
 
-	action := Decide(load, running, backupAvailable)
+	// 只有配置一致、服务又确实在跑的时候,"卡在重连 broker"这个问题才有意义去查——
+	// 配置不一致或服务没跑,已经有优先级更高的动作要做,不需要这个信号,也没必要为了
+	// 拿这个信号去读一次日志文件。读日志失败(比如文件暂时被占用)不当成 watch 本身的
+	// 失败,按"没有卡死信号"处理——好过因为一次偶发的读取失败就贸然重启一个其实可能
+	// 正常的服务,下一轮(5 分钟后)会重新判断。
+	brokerStuck := false
+	if load.Consistent && running {
+		size, sizeErr := svc.LogSize()
+		if sizeErr == nil {
+			offset := size - stuckCheckTailBytes
+			if offset < 0 {
+				offset = 0
+			}
+			if tail, readErr := svc.ReadLogFrom(offset); readErr == nil {
+				brokerStuck = IsBrokerStuck(tail)
+			}
+		}
+	}
+
+	// 日志显示"卡死"只是个初步嫌疑,真正值不值得为此重启服务,还要看隧道本身是不是
+	// 也确实不通——只有 brokerStuck 为 true 时才会调用 TunnelReachable(短路求值,
+	// 健康状态下不会多打一次 ping),隧道能通就说明这只是控制通道的问题,不去碰它。
+	if brokerStuck && tunnel.TunnelReachable() {
+		brokerStuck = false
+	}
+
+	action := Decide(load, running, backupAvailable, brokerStuck)
 
 	switch action {
 	case ActionNone:
@@ -190,6 +266,21 @@ func Run(netclientDir, backupDir string, svc ServiceController) (Result, error) 
 			return Result{Action: action}, fmt.Errorf("start service after restore: %w", err)
 		}
 		return Result{Action: action, Detail: "restored from known-good backup, restarted service, and verified broker connectivity"}, nil
+
+	case ActionRestartStuckService:
+		// 走到这里说明日志显示卡死、而且隧道本身也确认 ping 不通了(见上面
+		// TunnelChecker 的门槛检查),不是那种"broker 卡但隧道其实正常"的情况——
+		// 这时候才值得为了修 broker 去动服务。服务本身没死(sc query 显示
+		// Running),配置也一致,Stop 是安全的,不存在"半恢复"之类的中间状态
+		// 需要担心(不涉及配置文件改动),直接复用 startAndVerifyHealthy 的
+		// Stop+Start+验证连通性逻辑。
+		if err := svc.Stop(); err != nil {
+			return Result{Action: action}, fmt.Errorf("stop stuck service: %w", err)
+		}
+		if err := startAndVerifyHealthy(svc, defaultHealthCheckAttempts, defaultHealthCheckTimeout, defaultHealthCheckInterval); err != nil {
+			return Result{Action: action}, fmt.Errorf("restart stuck service: %w", err)
+		}
+		return Result{Action: action, Detail: "service was running but stuck reconnecting to broker (tunnel also unreachable), restarted and verified connectivity"}, nil
 
 	case ActionAlertNoBackup:
 		return Result{Action: action}, fmt.Errorf("config invalid and no known-good backup available, manual intervention required")

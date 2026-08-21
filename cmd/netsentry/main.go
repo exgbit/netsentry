@@ -38,7 +38,7 @@ import (
 const (
 	netclientDir = `C:\Program Files (x86)\Netclient\`
 	guardDir     = `C:\ProgramData\NetSentry\`
-	guardVersion = "0.5.6"
+	guardVersion = "0.5.7"
 )
 
 func backupDir() string        { return guardDir + `backup\` }
@@ -112,9 +112,24 @@ func runBackup() {
 	fmt.Println("backup:", outcome)
 }
 
+// pingTunnelChecker 实现 watch.TunnelChecker,ping settings.json 里配置的连通性
+// 测试目标——跟面板"测试连通性"按钮走的是同一组目标 IP,复用同一份"隧道本身
+// 能不能用"的判断标准,不需要为这个检查单独再配一套目标地址。
+type pingTunnelChecker struct{}
+
+func (pingTunnelChecker) TunnelReachable() bool {
+	s, _ := settings.Load(settingsPath())
+	for _, ip := range s.ConnectivityTargets {
+		if winexec.Hidden("ping.exe", "-n", "2", ip).Run() == nil {
+			return true
+		}
+	}
+	return false
+}
+
 func runWatch() {
 	svc := winsvc.SCController{Name: "netclient", LogPath: netclientDir + `logs\winsw.out.log`}
-	result, err := watch.Run(netclientDir, backupDir(), svc)
+	result, err := watch.Run(netclientDir, backupDir(), svc, pingTunnelChecker{})
 	if err != nil {
 		_ = guardlog.Append(guardLogPath(), "ALERT", "watch: "+err.Error())
 		fmt.Println("watch ALERT:", err)
