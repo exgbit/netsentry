@@ -13,6 +13,14 @@ type ChangelogEntry struct {
 // 不倒填之前没有版本号track的历史。以后每发一个新版本,在最前面加一条。
 var Changelog = []ChangelogEntry{
 	{
+		Version: "0.5.12",
+		Date:    "2026-08-22",
+		Notes: []string{
+			"修复:卸载 netclient 后的残留清理偶发失败(netclient 卸载命令返回时服务" +
+				"包装进程还在异步收尾、文件句柄未释放),改为最多等 30 秒重试删除",
+		},
+	},
+	{
 		Version: "0.5.11",
 		Date:    "2026-08-22",
 		Notes: []string{

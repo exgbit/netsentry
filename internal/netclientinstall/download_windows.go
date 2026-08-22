@@ -102,10 +102,18 @@ func Uninstall() error {
 		return fmt.Errorf("netclient uninstall: %w: %s", err, winexec.DecodeConsoleOutput(out))
 	}
 
-	if err := os.RemoveAll(installedNetclientDir); err != nil {
-		return fmt.Errorf("remove leftover %s: %w", installedNetclientDir, err)
+	// 带重试的收尾删除——真机踩过的竞态:`netclient uninstall` 命令返回时,WinSW
+	// 包装进程的退出和服务注销还在异步收尾(winsw.err.log 等文件句柄要过几秒才
+	// 释放),立刻 RemoveAll 会撞上 "being used by another process"。实测几秒后
+	// 就能删掉,这里最多等 30 秒,足够覆盖正常收尾时间,又不会在真出问题时挂太久。
+	var rmErr error
+	for i := 0; i < 15; i++ {
+		if rmErr = os.RemoveAll(installedNetclientDir); rmErr == nil {
+			return nil
+		}
+		time.Sleep(2 * time.Second)
 	}
-	return nil
+	return fmt.Errorf("remove leftover %s: %w", installedNetclientDir, rmErr)
 }
 
 // download 把 url 下载到一个带 .exe 后缀的临时文件,返回临时文件路径。
