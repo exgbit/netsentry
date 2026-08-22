@@ -4,6 +4,18 @@ Windows 后台工具,自动备份/恢复 [netclient](https://github.com/gravitl/
 
 **下载编译好的 exe**:[Releases](../../releases/latest) —— `netsentry.exe` + `netsentry-tray.exe` 两个文件要放在同一目录下一起用,详见下方"安装 / 构建"。
 
+## 一键安装
+
+在 Windows 终端(PowerShell)里粘贴下面这一条命令,把 `<token>`、`<name>`、`<port>` 换成管理员提供的 enrollment token、设备名称、端口即可——自动完成:下载 NetSentry 双 exe → 下载安装 netclient → 加入企业网络 → 装好自愈守护和托盘:
+
+```powershell
+$ProgressPreference='SilentlyContinue'; cd $env:TEMP; iwr https://github.com/exgbit/netsentry/releases/latest/download/netsentry.exe -OutFile netsentry.exe; iwr https://github.com/exgbit/netsentry/releases/latest/download/netsentry-tray.exe -OutFile netsentry-tray.exe; .\netsentry.exe setup-netclient -t "<token>" --name "<name>" -p <port>
+```
+
+- `--name`、`-p` 都可以省略:不传时分别默认用本机设备名和 51821。
+- 建议在**管理员终端**里执行(右键"以管理员身份运行");非管理员终端也能用,会弹一次 UAC 确认框,但安装过程的输出会看不到(在提权后的独立进程里执行)。
+- 网络访问 github.com 受限时,前两步下载会失败——改为手动把 [Releases](../../releases/latest) 里的两个 exe 放到同一目录,再单独执行最后一段 `netsentry.exe setup-netclient ...` 即可。
+
 ## 界面
 
 | 仪表盘 | 设置 | 操作结果 |
