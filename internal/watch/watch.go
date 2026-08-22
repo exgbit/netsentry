@@ -145,11 +145,21 @@ const (
 	stuckCheckTailBytes = 16 * 1024
 )
 
-// startAndVerifyHealthy 假设服务当前已经是停止状态,启动它并轮询日志确认真的连上了 broker;
-// 如果在 checkTimeout 内没等到成功信号,会重新 Stop+Start 再试一次,最多尝试 maxAttempts 次。
+// startAndVerifyHealthy 假设服务当前已经是停止状态,启动它并轮询日志确认 broker 连接没有出问题;
+// 如果在 checkTimeout 内确认到连接失败,会重新 Stop+Start 再试一次,最多尝试 maxAttempts 次。
 // 这是为了绕开 netclient 一个已知的上游 bug:重启后有时会卡在反复重连 broker、最终自己退出,
 // 而全新进程(即再 Stop+Start 一次)通常能跳出这个卡死状态——这是从真实故障里观察到的行为,
 // 不是理论推测。
+//
+// 判定规则(真机踩坑后修订):
+//   - 轮询期间看到成功信号(brokerConnectedSignal)→ 立即成功。
+//   - 超时且日志尾部没有"失败在成功之后"的证据(!IsBrokerStuck)→ 也算成功。
+//     不能把"没等到成功信号"直接当失败:成功信号是 slog.Info 打的,而 netclient
+//     v1.6.0 join 出来的主机默认 verbosity 0,Info 级日志整个被过滤——真机上验证过
+//     "broker 实际连上了(mosquitto 服务端能看到该客户端),winsw.out.log 里却永远
+//     不会出现这行"。失败信号(unable to connect to broker)是 ERROR 级,任何
+//     verbosity 下都会打,所以"没有失败证据"是可靠的放行依据。
+//   - 超时且日志尾部有失败证据 → 这一轮判失败,Stop+Start 重试。
 func startAndVerifyHealthy(svc ServiceController, maxAttempts int, checkTimeout, pollInterval time.Duration) error {
 	var lastErr error
 	for attempt := 1; attempt <= maxAttempts; attempt++ {
@@ -168,9 +178,11 @@ func startAndVerifyHealthy(svc ServiceController, maxAttempts int, checkTimeout,
 			continue
 		}
 		deadline := time.Now().Add(checkTimeout)
+		var tail []byte
 		for {
-			tail, err := svc.ReadLogFrom(offset)
-			if err == nil && IsBrokerConnected(tail) {
+			var readErr error
+			tail, readErr = svc.ReadLogFrom(offset)
+			if readErr == nil && IsBrokerConnected(tail) {
 				return nil
 			}
 			if !time.Now().Before(deadline) {
@@ -178,7 +190,12 @@ func startAndVerifyHealthy(svc ServiceController, maxAttempts int, checkTimeout,
 			}
 			time.Sleep(pollInterval)
 		}
-		lastErr = fmt.Errorf("attempt %d/%d: service started but did not connect to broker within %s (known upstream netclient MQTT reconnect issue)", attempt, maxAttempts, checkTimeout)
+		if !IsBrokerStuck(tail) {
+			// 超时但没有任何失败证据:默认 verbosity 下成功信号本来就不会出现,
+			// 服务在跑、也没在报连接失败,按健康放行。
+			return nil
+		}
+		lastErr = fmt.Errorf("attempt %d/%d: service started but kept failing to connect to broker within %s (known upstream netclient MQTT reconnect issue)", attempt, maxAttempts, checkTimeout)
 	}
 	return lastErr
 }

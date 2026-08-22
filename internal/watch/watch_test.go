@@ -349,6 +349,30 @@ func TestStartAndVerifyHealthy_RetriesAndSucceedsOnSecondAttempt(t *testing.T) {
 	}
 }
 
+// TestStartAndVerifyHealthy_PassesWhenNoSignalAtAll 是真机踩坑后的回归用例:
+// netclient v1.6.0 join 出来的主机默认 verbosity 0,成功信号(slog.Info 级)整个
+// 被过滤,broker 实际连上了日志里也永远看不到那一行——这种情况下超时不能判失败,
+// 只要没有失败证据(ERROR 级、任何 verbosity 都会打)就该放行,更不能去反复重启
+// 一个其实健康的服务。
+func TestStartAndVerifyHealthy_PassesWhenNoSignalAtAll(t *testing.T) {
+	svc := &fakeService{
+		running: false,
+		logSequences: [][][]byte{
+			{[]byte("completed pull for server tomtoc.cn")},
+		},
+	}
+	err := startAndVerifyHealthy(svc, 3, 30*time.Millisecond, 5*time.Millisecond)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if svc.startCalls != 1 {
+		t.Errorf("expected exactly one start call (no retry for a quiet-but-healthy service), got %d", svc.startCalls)
+	}
+	if svc.stopCalls != 0 {
+		t.Errorf("expected no stop calls, got %d", svc.stopCalls)
+	}
+}
+
 func TestStartAndVerifyHealthy_FailsAfterMaxAttempts(t *testing.T) {
 	svc := &fakeService{
 		running: false,
