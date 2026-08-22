@@ -13,3 +13,8 @@ func Run(token, port, name string) error {
 func Uninstall() error {
 	return errors.New("netclientinstall: not supported on this platform")
 }
+
+// Installed 在非 Windows 平台上恒为 false,只是为了让 go build ./... 能跨平台通过。
+func Installed() bool {
+	return false
+}

@@ -22,3 +22,30 @@ const PinnedVersion = "v1.6.0"
 func DownloadURL(version string) string {
 	return fmt.Sprintf("https://downloads.netmaker.io/releases/download/%s/netclient-windows-amd64.exe", version)
 }
+
+// ExistingAction 是 setup-netclient 面对"本机可能已经装过 netclient"时的决定。
+type ExistingAction int
+
+const (
+	// FreshInstall:本机没装过,正常走下载→安装→加入网络。
+	FreshInstall ExistingAction = iota
+	// KeepAndGuard:已装且配置正常,跳过重装(不消耗 enrollment key 次数、
+	// 不中断现有隧道),直接给它开启 NetSentry 守护。
+	KeepAndGuard
+	// WipeAndReinstall:已装但配置不正常(netclient.json/servers.json 不一致、
+	// 读不出来,或服务根本没注册),修不如重来——完整卸载后重新安装配置。
+	WipeAndReinstall
+)
+
+// DecideExisting 根据三个事实做决定:netclient.exe 是否存在、配置是否一致
+// (guardconfig.Load 的 Consistent)、netclient 服务是否已注册(sc query 是否
+// 成功,不要求正在运行——服务注册了但停着,交给守护巡检去拉起即可)。
+func DecideExisting(exeExists, configConsistent, serviceExists bool) ExistingAction {
+	if !exeExists {
+		return FreshInstall
+	}
+	if configConsistent && serviceExists {
+		return KeepAndGuard
+	}
+	return WipeAndReinstall
+}

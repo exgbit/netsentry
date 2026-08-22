@@ -104,6 +104,12 @@ func Run(token, port, name string) error {
 // 上面 CombinedOutput() 已经等 netclient.exe uninstall 这个子进程完全退出才会
 // 返回,它对自身文件的句柄这时候已经释放,轮不到 NetSentry(不是同一个进程)
 // 自己再去检测——直接删掉剩下的整个目录即可,不需要额外的进程存活检查。
+// Installed 报告本机是否已经存在安装好的 netclient.exe(固定安装路径)。
+func Installed() bool {
+	_, err := os.Stat(installedNetclientExePath)
+	return err == nil
+}
+
 func Uninstall() error {
 	if _, err := os.Stat(installedNetclientExePath); err != nil {
 		if os.IsNotExist(err) {

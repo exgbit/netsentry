@@ -21,6 +21,7 @@ import (
 	"netsentry/internal/defenderexcl"
 	"netsentry/internal/diag"
 	"netsentry/internal/elevate"
+	"netsentry/internal/guardconfig"
 	"netsentry/internal/guardlog"
 	"netsentry/internal/netclientinstall"
 	"netsentry/internal/netpriority"
@@ -39,7 +40,7 @@ import (
 const (
 	netclientDir = `C:\Program Files (x86)\Netclient\`
 	guardDir     = `C:\ProgramData\NetSentry\`
-	guardVersion = "0.6.2"
+	guardVersion = "0.6.3"
 )
 
 func backupDir() string        { return guardDir + `backup\` }
@@ -153,7 +154,7 @@ func runWatch() {
 		fmt.Println("netpriority:", npResult.Detail)
 	}
 
-	// 自动升级检查:镜像地址在 settings.json(UpdateBaseURL),内部节流为每天
+	// 自动升级检查:镜像地址在 settings.json(UpdateBaseURL),内部节流为每小时
 	// 最多真正检查一次。失败只记日志,不影响 watch 的退出码——升级是锦上添花,
 	// 不能因为镜像临时不可用把巡检标成失败。
 	s, _ := settings.Load(settingsPath())
@@ -785,9 +786,39 @@ func runSetupNetclient() {
 		}
 	}
 
-	if err := netclientinstall.Run(token, port, name); err != nil {
-		fmt.Println("setup-netclient error:", err)
-		os.Exit(1)
+	// 本机可能已经装过 netclient(同事重复跑一键命令、或换了台"以为是新机"的
+	// 旧机器):配置正常就不动它——重装会白白消耗 enrollment key 的使用次数、
+	// 还会中断一条本来好好的隧道,直接给它开启守护即可;配置不正常则修不如
+	// 重来,完整卸载后按全新安装走。
+	load, loadErr := guardconfig.Load(netclientDir)
+	svc := winsvc.SCController{Name: "netclient", LogPath: netclientDir + `logs\winsw.out.log`}
+	_, svcErr := svc.IsRunning() // 只关心服务是否已注册(sc query 是否成功),不要求正在运行
+	action := netclientinstall.DecideExisting(
+		netclientinstall.Installed(), loadErr == nil && load.Consistent, svcErr == nil)
+
+	switch action {
+	case netclientinstall.KeepAndGuard:
+		fmt.Println("setup-netclient: 检测到本机已安装 netclient 且配置正常,跳过重装,直接开启守护")
+		// 服务注册了但停着的话顺手拉起,不用等第一轮 watch 巡检(最长 5 分钟)。
+		if running, err := svc.IsRunning(); err == nil && !running {
+			if err := svc.Start(); err != nil {
+				fmt.Println("setup-netclient WARN: 启动 netclient 服务失败(守护巡检稍后会重试):", err)
+			} else {
+				fmt.Println("setup-netclient: 已启动 netclient 服务")
+			}
+		}
+	case netclientinstall.WipeAndReinstall:
+		fmt.Println("setup-netclient: 检测到本机已安装 netclient 但配置异常,先完整卸载再重新安装")
+		if err := netclientinstall.Uninstall(); err != nil {
+			fmt.Println("setup-netclient error: 卸载异常的 netclient 失败:", err)
+			os.Exit(1)
+		}
+		fallthrough
+	case netclientinstall.FreshInstall:
+		if err := netclientinstall.Run(token, port, name); err != nil {
+			fmt.Println("setup-netclient error:", err)
+			os.Exit(1)
+		}
 	}
 
 	// 刚加入网络、netmaker 网卡刚出现的这一刻就把跃点数调好,不用等下一次

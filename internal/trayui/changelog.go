@@ -13,6 +13,15 @@ type ChangelogEntry struct {
 // 不倒填之前没有版本号track的历史。以后每发一个新版本,在最前面加一条。
 var Changelog = []ChangelogEntry{
 	{
+		Version: "0.6.3",
+		Date:    "2026-08-22",
+		Notes: []string{
+			"改进:一键安装(setup-netclient)遇到本机已装 netclient 时先做" +
+				"健康判定——配置正常就跳过重装(不消耗 key 次数、不断隧道)" +
+				"直接开启守护;配置异常则完整卸载后重新安装配置",
+		},
+	},
+	{
 		Version: "0.6.2",
 		Date:    "2026-08-22",
 		Notes: []string{
