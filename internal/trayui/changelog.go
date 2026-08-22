@@ -13,6 +13,14 @@ type ChangelogEntry struct {
 // 不倒填之前没有版本号track的历史。以后每发一个新版本,在最前面加一条。
 var Changelog = []ChangelogEntry{
 	{
+		Version: "0.5.14",
+		Date:    "2026-08-22",
+		Notes: []string{
+			"修复:下载 netclient 安装包遇到瞬时网络错误(如 CDN 掐断连接)时直接失败," +
+				"现在自动重试最多 3 次",
+		},
+	},
+	{
 		Version: "0.5.13",
 		Date:    "2026-08-22",
 		Notes: []string{

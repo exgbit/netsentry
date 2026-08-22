@@ -131,8 +131,29 @@ func Uninstall() error {
 	return fmt.Errorf("remove leftover %s: %w", installedNetclientDir, rmErr)
 }
 
-// download 把 url 下载到一个带 .exe 后缀的临时文件,返回临时文件路径。
+// download 把 url 下载到一个带 .exe 后缀的临时文件,返回临时文件路径。失败自动
+// 重试最多 3 次——真机踩过的坑:下载中途连接被 CDN 掐断(HTTP/2 stream
+// PROTOCOL_ERROR,一次触发场景是控制台被鼠标点击进入"选择模式"、进程输出被
+// 挂起几分钟导致流超时被服务端重置;不冻结时这类瞬时网络错误也可能偶发),
+// 之前一次失败就让整个 setup-netclient 前功尽弃,重试一次几乎总能成功。
 func download(url string) (string, error) {
+	var lastErr error
+	for attempt := 1; attempt <= 3; attempt++ {
+		if attempt > 1 {
+			fmt.Printf("下载失败,%d 秒后重试(第 %d/3 次): %v\n", 3, attempt, lastErr)
+			time.Sleep(3 * time.Second)
+		}
+		tmpPath, err := downloadOnce(url)
+		if err == nil {
+			return tmpPath, nil
+		}
+		lastErr = err
+	}
+	return "", lastErr
+}
+
+// downloadOnce 执行单次下载尝试。
+func downloadOnce(url string) (string, error) {
 	resp, err := http.Get(url)
 	if err != nil {
 		return "", fmt.Errorf("http get %s: %w", url, err)
