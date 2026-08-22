@@ -9,8 +9,10 @@ Windows 后台工具,自动备份/恢复 [netclient](https://github.com/gravitl/
 在 Windows 终端(PowerShell)里粘贴下面这一条命令,把 `<token>`、`<name>`、`<port>` 换成管理员提供的 enrollment token、设备名称、端口即可——自动完成:下载 NetSentry 双 exe → 下载安装 netclient → 加入企业网络 → 装好自愈守护和托盘:
 
 ```powershell
-$ErrorActionPreference='Stop'; $ProgressPreference='SilentlyContinue'; cd $env:TEMP; foreach($f in 'netsentry.exe','netsentry-tray.exe'){ for($i=1;$i -le 3;$i++){ try { iwr "https://github.com/exgbit/netsentry/releases/latest/download/$f" -OutFile $f; break } catch { if($i -eq 3){throw}; Start-Sleep 3 } } }; .\netsentry.exe setup-netclient -t "<token>" --name "<name>" -p <port>
+$ErrorActionPreference='Stop'; $ProgressPreference='SilentlyContinue'; cd $env:TEMP; foreach($f in 'netsentry.exe','netsentry-tray.exe'){ Write-Host "正在下载 $f(约 11MB,请稍候,无进度显示)..."; for($i=1;$i -le 3;$i++){ try { iwr "https://github.com/exgbit/netsentry/releases/latest/download/$f" -OutFile $f; Write-Host "$f 下载完成"; break } catch { if($i -eq 3){throw}; Write-Host "下载失败,3 秒后重试($i/3)..."; Start-Sleep 3 } } }; .\netsentry.exe setup-netclient -t "<token>" --name "<name>" -p <port>
 ```
+
+(前两个文件的下载不显示进度条——PowerShell 5.1 的进度条会显著拖慢下载,改为分步提示;之后 netclient 安装包的下载有实时进度百分比。)
 
 - `--name`、`-p` 都可以省略:不传时分别默认用本机设备名和 51821。
 - 建议在**管理员终端**里执行(右键"以管理员身份运行");非管理员终端也能用,会弹一次 UAC 确认框,但安装过程的输出会看不到(在提权后的独立进程里执行)。
