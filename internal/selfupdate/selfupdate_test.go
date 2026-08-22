@@ -1,9 +1,62 @@
 package selfupdate
 
 import (
+	"crypto/ed25519"
+	"crypto/rand"
+	"encoding/hex"
 	"testing"
 	"time"
 )
+
+func TestVerifyManifestSignature(t *testing.T) {
+	pub, priv, err := ed25519.GenerateKey(rand.Reader)
+	if err != nil {
+		t.Fatal(err)
+	}
+	pubHex := hex.EncodeToString(pub)
+	manifest := []byte(`{"version":"0.6.1","files":{}}`)
+	sigHex := hex.EncodeToString(ed25519.Sign(priv, manifest)) + "\n"
+
+	if err := VerifyManifestSignature(manifest, sigHex, pubHex); err != nil {
+		t.Errorf("合法签名应通过: %v", err)
+	}
+	if err := VerifyManifestSignature([]byte(`{"version":"9.9.9","files":{}}`), sigHex, pubHex); err == nil {
+		t.Error("清单被篡改后必须拒绝")
+	}
+	otherPub, _, _ := ed25519.GenerateKey(rand.Reader)
+	if err := VerifyManifestSignature(manifest, sigHex, hex.EncodeToString(otherPub)); err == nil {
+		t.Error("用错误公钥必须拒绝")
+	}
+	if err := VerifyManifestSignature(manifest, "not-hex", pubHex); err == nil {
+		t.Error("签名不是合法 hex 必须拒绝")
+	}
+}
+
+func TestIsNewerVersion(t *testing.T) {
+	cases := []struct {
+		candidate, current string
+		want               bool
+		wantErr            bool
+	}{
+		{"0.6.1", "0.6.0", true, false},
+		{"0.6.0", "0.6.0", false, false},
+		{"0.5.9", "0.6.0", false, false},
+		{"0.10.0", "0.9.9", true, false},
+		{"1.0.0", "0.99.99", true, false},
+		{"abc", "0.6.0", false, true},
+		{"0.6.0-test", "0.6.0", false, true},
+	}
+	for _, c := range cases {
+		got, err := IsNewerVersion(c.candidate, c.current)
+		if (err != nil) != c.wantErr {
+			t.Errorf("IsNewerVersion(%q,%q) err=%v, wantErr=%v", c.candidate, c.current, err, c.wantErr)
+			continue
+		}
+		if got != c.want {
+			t.Errorf("IsNewerVersion(%q,%q)=%v, want %v", c.candidate, c.current, got, c.want)
+		}
+	}
+}
 
 func TestParseManifest_Valid(t *testing.T) {
 	sum := SHA256Hex([]byte("hello"))

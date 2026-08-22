@@ -39,7 +39,7 @@ import (
 const (
 	netclientDir = `C:\Program Files (x86)\Netclient\`
 	guardDir     = `C:\ProgramData\NetSentry\`
-	guardVersion = "0.6.0"
+	guardVersion = "0.6.1"
 )
 
 func backupDir() string        { return guardDir + `backup\` }

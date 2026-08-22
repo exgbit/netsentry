@@ -34,7 +34,7 @@ $ErrorActionPreference='Stop'; $ProgressPreference='SilentlyContinue'; cd $env:T
 - **诊断包**:一键打包服务状态、计划任务状态、Defender 排除列表、系统信息等,方便远程排障——涉及密钥/密码的字段会先脱敏再打包。
 - **可配置连通性测试目标**:面板内置"设置"界面维护测试用的内网 IP 列表,存在 `settings.json` 里,改了不用重新编译。
 - **面板内更新日志**:面板里直接能看每个版本改了什么,不用翻 git log。
-- **自动升级**:watch 巡检每小时检查一次升级源上的 `version.json`,发现新版本自动下载、SHA256 校验、替换两个 exe(正在运行的进程在下次启动时用上新版本)。升级源在 `settings.json` 的 `updateBaseURL` 里配置,设为 `"disabled"` 可关闭。
+- **自动升级**:watch 巡检每小时检查一次升级源上的 `version.json`,发现新版本自动下载、校验、替换两个 exe(正在运行的进程在下次启动时用上新版本)。清单必须带发布者的 ed25519 签名(公钥编译在二进制里),且版本只升不降——镜像服务器被攻破也无法借升级通道下发恶意代码。升级源在 `settings.json` 的 `updateBaseURL` 里配置,设为 `"disabled"` 可关闭。
 
 ## 安装 / 构建
 
@@ -95,12 +95,13 @@ netsentry.exe uninstall --purge  # 连备份一起删
 
 ```
 <updateBaseURL>/
-  version.json          最新版本清单(唯一可变的文件,服务端应对它禁用缓存)
+  version.json          最新版本清单(可变文件,服务端应对它禁用缓存)
+  version.json.sig      清单的 ed25519 签名(同样禁用缓存),客户端验签不过即拒绝
   <版本号>/netsentry.exe       按版本归档,内容永不变更
   <版本号>/netsentry-tray.exe
 ```
 
-回滚 = 把镜像上的 `version.json` 改回旧版本号,所有客户端 1 小时内自动换回去。
+客户端只升不降(防重放旧清单),所以回滚 = 检出旧代码、改一个更高的版本号、重新跑 `scripts/release.sh`。签名私钥用 `go run ./cmd/signmanifest gen` 生成,只保存在发布者本机。
 
 ## 图标资源
 

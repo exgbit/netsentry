@@ -8,14 +8,17 @@
 #   2. 参数里的版本号必须与代码里的 guardVersion 一致(防手滑发错版本);
 #   3. go vet + go test 全绿;
 #   4. make build 产出 dist/ 下两个 exe + version.json;
-#   5. git tag v<版本> 并 push,gh release create 同步发布到 GitHub;
-#   6. 部署内网镜像:exe 传到 /var/www/netsentry/<版本>/(带版本号的路径,
-#      内容永不变更),最后一步才原子替换根目录的 version.json——客户端不会
-#      看到"版本号已更新但 exe 还没传完"的中间态。
+#   5. 用本机私钥(~/.config/netsentry/signing.key,cmd/signmanifest 生成)对
+#      version.json 做 ed25519 签名,并核对私钥与代码里编译进客户端的公钥配对
+#      ——客户端只认这把钥匙签出的清单,镜像服务器本身不在信任链里;
+#   6. git tag v<版本> 并 push,gh release create 同步发布到 GitHub;
+#   7. 部署内网镜像:exe 传到 /var/www/netsentry/<版本>/(带版本号的路径,
+#      内容永不变更),最后一步才原子替换根目录的 version.json + .sig——
+#      客户端不会看到"版本号已更新但 exe 还没传完"的中间态。
 #
 # version.json 换上之后,所有客户端的 watch 巡检会在 1 小时内发现新版本并自动
-# 升级(下载、SHA256 校验、替换 exe),无需任何人工操作。回滚 = 在镜像上把
-# version.json 改回旧版本号(旧版本目录一直保留)。
+# 升级(验签、下载、SHA256 校验、替换 exe),无需任何人工操作。客户端只升不降
+# (防重放旧清单),所以回滚 = 检出旧代码、改一个更高的版本号、重新跑本脚本。
 set -euo pipefail
 
 VERSION=${1:?用法: scripts/release.sh <版本号,如 0.6.1>}
@@ -44,6 +47,21 @@ echo "== 构建 =="
 make clean
 make build
 
+echo "== 签名 version.json =="
+SIGNING_KEY="$HOME/.config/netsentry/signing.key"
+[ -f "$SIGNING_KEY" ] || {
+	echo "错误: 缺少签名私钥 $SIGNING_KEY"
+	echo "生成: go run ./cmd/signmanifest gen -out $SIGNING_KEY(公钥要与代码一致)"
+	exit 1
+}
+PUB_CODE=$(sed -n 's/.*UpdatePublicKeyHex = "\(.*\)"/\1/p' internal/selfupdate/selfupdate.go)
+PUB_KEY=$(go run ./cmd/signmanifest pub -key "$SIGNING_KEY")
+[ "$PUB_CODE" = "$PUB_KEY" ] || {
+	echo "错误: 私钥 $SIGNING_KEY 与代码里的 UpdatePublicKeyHex 不配对,客户端将拒绝这份签名"
+	exit 1
+}
+go run ./cmd/signmanifest sign -key "$SIGNING_KEY" -in dist/version.json -out dist/version.json.sig
+
 echo "== GitHub 发布 v$VERSION =="
 git tag "v$VERSION"
 git push origin main "v$VERSION"
@@ -55,6 +73,7 @@ echo "== 部署内网镜像 =="
 ssh "$MIRROR_HOST" "mkdir -p $MIRROR_DIR/$VERSION"
 scp dist/netsentry.exe dist/netsentry-tray.exe "$MIRROR_HOST:$MIRROR_DIR/$VERSION/"
 scp dist/version.json "$MIRROR_HOST:$MIRROR_DIR/version.json.new"
-ssh "$MIRROR_HOST" "mv $MIRROR_DIR/version.json.new $MIRROR_DIR/version.json"
+scp dist/version.json.sig "$MIRROR_HOST:$MIRROR_DIR/version.json.sig.new"
+ssh "$MIRROR_HOST" "mv $MIRROR_DIR/version.json.sig.new $MIRROR_DIR/version.json.sig && mv $MIRROR_DIR/version.json.new $MIRROR_DIR/version.json"
 
 echo "== 完成:v$VERSION 已发布,全部客户端将在 1 小时内自动升级 =="

@@ -55,12 +55,28 @@ func Run(baseURL, currentVersion, dir string) (Result, error) {
 	if err != nil {
 		return Result{}, fmt.Errorf("fetch version.json: %w", err)
 	}
+	// 先验签再解析使用:清单必须能用编译进本二进制的公钥验证通过,否则直接
+	// 拒绝——镜像服务器不在信任链里,它只是个文件搬运工。
+	sigBytes, err := fetch(baseURL + "/version.json.sig")
+	if err != nil {
+		return Result{}, fmt.Errorf("fetch version.json.sig: %w", err)
+	}
+	if err := VerifyManifestSignature(manifestBytes, string(sigBytes), UpdatePublicKeyHex); err != nil {
+		return Result{}, err
+	}
 	m, err := ParseManifest(manifestBytes)
 	if err != nil {
 		return Result{}, err
 	}
 	if m.Version == currentVersion {
 		return Result{Detail: "已是最新版本 " + currentVersion}, nil
+	}
+	// 只升不降:重放旧的已签名清单不能把机器退回旧版本。回滚要用旧代码发一个
+	// 更高的版本号(scripts/release.sh 一条命令)。
+	if newer, err := IsNewerVersion(m.Version, currentVersion); err != nil {
+		return Result{}, err
+	} else if !newer {
+		return Result{Detail: fmt.Sprintf("镜像版本 %s 不高于当前 %s,防降级跳过", m.Version, currentVersion)}, nil
 	}
 
 	// 先把所有文件下载并校验到 .new,全部就绪后再统一换入——避免下到一半失败
