@@ -38,7 +38,7 @@ import (
 const (
 	netclientDir = `C:\Program Files (x86)\Netclient\`
 	guardDir     = `C:\ProgramData\NetSentry\`
-	guardVersion = "0.5.10"
+	guardVersion = "0.5.11"
 )
 
 func backupDir() string        { return guardDir + `backup\` }
@@ -220,13 +220,14 @@ func onTrayReady() {
 	}
 
 	panelCfg := trayui.PanelConfig{
-		ExePath:        installedExePath(),
-		NetclientDir:   netclientDir,
-		BackupDir:      backupDir(),
-		InstallLogPath: installLogPath(),
-		Version:        guardVersion,
-		Svc:            svc,
-		SettingsPath:   settingsPath(),
+		ExePath:         installedExePath(),
+		NetclientDir:    netclientDir,
+		BackupDir:       backupDir(),
+		InstallLogPath:  installLogPath(),
+		Version:         guardVersion,
+		Svc:             svc,
+		SettingsPath:    settingsPath(),
+		DefaultJoinPort: defaultNetclientJoinPort,
 	}
 
 	go func() {

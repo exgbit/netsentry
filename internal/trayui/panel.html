@@ -603,10 +603,10 @@
         <p class="form-desc">粘贴管理员提供的 enrollment token,完成一次性安装即可自动接入并持续自我修复。</p>
         <label class="field-label" for="token-input">Enrollment Token</label>
         <input type="text" id="token-input" placeholder="例如 nc_9f8a2e...">
-        <label class="field-label form-field-gap" for="name-input">设备名称(选填)</label>
-        <input type="text" id="name-input" placeholder="留空则使用本机设备名">
-        <label class="field-label form-field-gap" for="port-input">端口(选填)</label>
-        <input type="text" id="port-input" placeholder="留空则使用 51821">
+        <label class="field-label form-field-gap" for="name-input">设备名称</label>
+        <input type="text" id="name-input">
+        <label class="field-label form-field-gap" for="port-input">端口</label>
+        <input type="text" id="port-input">
         <button class="btn-primary" id="setup-btn">安装并加入网络</button>
       </div>
     </div>
@@ -993,6 +993,16 @@
       showOutput('[获取状态出错] ' + err, 'err');
     });
   }
+
+  // "加入企业网络"表单的设备名/端口直接预填真实默认值(本机主机名、51821),
+  // 用户可以改;不是用占位提示——真机反馈"留空则使用 XX"不够直观。页面每次
+  // 打开面板才加载一次,不会覆盖用户在同一次会话里的编辑。
+  window.getJoinDefaults().then(function (d) {
+    if (d) {
+      document.getElementById('name-input').value = d.name || '';
+      document.getElementById('port-input').value = d.port || '';
+    }
+  });
 
   refreshStatus();
   setInterval(refreshStatus, 3000);

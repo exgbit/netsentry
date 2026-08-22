@@ -5,6 +5,7 @@ package trayui
 import (
 	_ "embed"
 	"encoding/json"
+	"os"
 	"runtime"
 
 	webview2 "github.com/jchv/go-webview2"
@@ -107,6 +108,13 @@ func bindPanel(w webview2.WebView, cfg PanelConfig) {
 	})
 	w.Bind("getChangelog", func() []ChangelogEntry {
 		return Changelog
+	})
+	// getJoinDefaults 给"加入企业网络"表单预填真实默认值(设备名=本机主机名,
+	// 端口=CLI 同源的默认端口)——真机反馈过占位提示的"留空则使用 XX"不够直观,
+	// 要求直接把值填进输入框里、可编辑。
+	w.Bind("getJoinDefaults", func() map[string]string {
+		name, _ := os.Hostname()
+		return map[string]string{"name": name, "port": cfg.DefaultJoinPort}
 	})
 	// getSettings/saveSettings 每次都直接读/写 cfg.SettingsPath,不缓存——设置
 	// 界面保存之后,下一次"测试连通性"要立刻用上新值,不等托盘重启。

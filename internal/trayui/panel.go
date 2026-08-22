@@ -11,12 +11,13 @@ import (
 
 // PanelConfig 是面板需要的全部依赖,由 main.go 组装后传给 ShowPanel。
 type PanelConfig struct {
-	ExePath        string // 已安装的 netsentry.exe 路径,面板里所有需要跑子命令的操作都 shell 到这个路径
-	NetclientDir   string
-	BackupDir      string
-	InstallLogPath string // guardDir + "install.log",setupNetclient 失败且没有可展示输出时,指引用户去看这个文件
-	Version        string // NetSentry 自身版本号,窗口标题栏展示
-	Svc            interface{ IsRunning() (bool, error) }
+	ExePath         string // 已安装的 netsentry.exe 路径,面板里所有需要跑子命令的操作都 shell 到这个路径
+	NetclientDir    string
+	BackupDir       string
+	InstallLogPath  string // guardDir + "install.log",setupNetclient 失败且没有可展示输出时,指引用户去看这个文件
+	Version         string // NetSentry 自身版本号,窗口标题栏展示
+	DefaultJoinPort string // "加入企业网络"表单端口输入框的预填默认值,由 main.go 传入(与 CLI 默认值同源)
+	Svc             interface{ IsRunning() (bool, error) }
 	// SettingsPath 是 settings.json 的路径("测试连通性"目标 IP 等设置存在这里)。
 	// getSettings/saveSettings 绑定每次都重新读这个文件,不是像早期版本那样在
 	// main.go 启动时读一次、缓存进 ConnectivityTargets 字段——用户在面板"设置"
