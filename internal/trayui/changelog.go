@@ -13,6 +13,16 @@ type ChangelogEntry struct {
 // 不倒填之前没有版本号track的历史。以后每发一个新版本,在最前面加一条。
 var Changelog = []ChangelogEntry{
 	{
+		Version: "0.5.13",
+		Date:    "2026-08-22",
+		Notes: []string{
+			"修复:在桌面终端(默认 GBK 代码页)运行时,下载进度等中文输出显示乱码" +
+				"(启动时把控制台切到 UTF-8,真机桌面截屏验证)",
+			"修复:安装过程中桌面弹出'是否允许 netclient-download-xxx 访问网络'的" +
+				"防火墙确认框(临时安装文件运行前预授权防火墙规则、装完删除)",
+		},
+	},
+	{
 		Version: "0.5.12",
 		Date:    "2026-08-22",
 		Notes: []string{

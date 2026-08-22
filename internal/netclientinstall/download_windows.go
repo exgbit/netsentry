@@ -58,6 +58,21 @@ func Run(token, port, name string) error {
 	}
 	defer os.Remove(tmpPath)
 
+	// 预授权防火墙规则,再跑安装——真机桌面闭环测试抓到的问题:下载下来的临时
+	// 安装文件(netclient-download-*.exe)在 install 过程中会监听端口,Windows
+	// 防火墙对没有规则的程序会在桌面弹"是否允许 netclient-download-12345678 访问
+	// 网络"的确认框,临时文件名随机、发行者"未知",同事看到只会困惑(而且每次
+	// 安装文件名都不同,每次都弹)。这里在运行前给这个具体路径加一条放行规则、
+	// 装完删除,弹窗从根上不出现。setup-netclient 走到这里时已经过 ensureElevated
+	// 提权,netsh 有权限执行。加删规则都是尽力而为:失败只是退回"会弹窗"的原状,
+	// 不值得让整个安装因此中断。
+	const installerFwRule = "NetSentry netclient installer"
+	_ = winexec.Hidden("netsh.exe", "advfirewall", "firewall", "add", "rule",
+		"name="+installerFwRule, "dir=in", "action=allow", "program="+tmpPath, "enable=yes").Run()
+	defer func() {
+		_ = winexec.Hidden("netsh.exe", "advfirewall", "firewall", "delete", "rule", "name="+installerFwRule).Run()
+	}()
+
 	if out, err := runWithTimeout(installTimeout, tmpPath, "install"); err != nil {
 		return fmt.Errorf("netclient install: %w: %s", err, winexec.DecodeConsoleOutput(out))
 	}
