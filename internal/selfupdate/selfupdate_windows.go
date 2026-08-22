@@ -45,10 +45,13 @@ func Run(baseURL, currentVersion, dir string) (Result, error) {
 	// 每 5 分钟的 watch 都去重试一次,失败也等下一个间隔再说。
 	_ = os.WriteFile(stampPath, []byte(strconv.FormatInt(time.Now().Unix(), 10)), 0o644)
 
-	// 清理上一次升级留下的 .old 文件(当时可能还被旧进程占用删不掉)。失败忽略,
-	// 下一轮再试。
-	for _, name := range []string{"netsentry.exe.old", "netsentry-tray.exe.old"} {
-		_ = os.Remove(filepath.Join(dir, name))
+	// 清理历次升级留下的 .old / .failed 文件。可能仍被没重启的旧进程占用而删
+	// 不掉,失败忽略、下一轮再试(旧进程退出后总会清掉)。
+	for _, pattern := range []string{"*.exe.old*", "*.exe.failed"} {
+		matches, _ := filepath.Glob(filepath.Join(dir, pattern))
+		for _, p := range matches {
+			_ = os.Remove(p)
+		}
 	}
 
 	manifestBytes, err := fetch(baseURL + "/version.json")
@@ -98,21 +101,27 @@ func Run(baseURL, currentVersion, dir string) (Result, error) {
 		}
 	}
 
-	// 逐个换入:当前 exe(可能正在运行)改名成 .old,再把 .new 放到原位。
-	// 第二个失败时尽力把第一个滚回去,保持两个 exe 版本一致。
-	var swapped []string
+	// 逐个换入:当前 exe(可能正在运行)改名成 .old-<时间戳>,再把 .new 放到
+	// 原位。第二个失败时尽力把第一个滚回去,保持两个 exe 版本一致。
+	//
+	// .old 名字必须唯一,不能用固定的 ".old":上一次升级的 .old 可能仍被一直
+	// 没重启的旧进程(典型是托盘)占用着,锁定中的文件既删不掉、也不能作为
+	// 改名的目标被覆盖——固定名字会让第二次升级永远失败,直到那台机器重启。
+	var swapped []swapEntry
+	ts := strconv.FormatInt(time.Now().Unix(), 10)
 	for name := range m.Files {
 		cur := filepath.Join(dir, name)
-		if err := os.Rename(cur, cur+".old"); err != nil && !os.IsNotExist(err) {
-			rollback(dir, swapped)
+		old := cur + ".old-" + ts
+		if err := os.Rename(cur, old); err != nil && !os.IsNotExist(err) {
+			rollback(swapped)
 			return Result{}, fmt.Errorf("rename %s to .old: %w", name, err)
 		}
 		if err := os.Rename(cur+".new", cur); err != nil {
-			_ = os.Rename(cur+".old", cur)
-			rollback(dir, swapped)
+			_ = os.Rename(old, cur)
+			rollback(swapped)
 			return Result{}, fmt.Errorf("move %s.new into place: %w", name, err)
 		}
-		swapped = append(swapped, name)
+		swapped = append(swapped, swapEntry{cur: cur, old: old})
 	}
 
 	return Result{
@@ -121,12 +130,14 @@ func Run(baseURL, currentVersion, dir string) (Result, error) {
 	}, nil
 }
 
-// rollback 把已经换入新版本的文件滚回 .old 版本。
-func rollback(dir string, swapped []string) {
-	for _, name := range swapped {
-		cur := filepath.Join(dir, name)
-		_ = os.Rename(cur, cur+".failed")
-		_ = os.Rename(cur+".old", cur)
+// swapEntry 记录一次换入:cur 是 exe 原位路径,old 是旧版本被改名后的路径。
+type swapEntry struct{ cur, old string }
+
+// rollback 把已经换入新版本的文件滚回原来的版本。
+func rollback(swapped []swapEntry) {
+	for _, s := range swapped {
+		_ = os.Rename(s.cur, s.cur+".failed")
+		_ = os.Rename(s.old, s.cur)
 	}
 }
 

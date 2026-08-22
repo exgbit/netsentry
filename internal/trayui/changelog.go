@@ -13,6 +13,15 @@ type ChangelogEntry struct {
 // 不倒填之前没有版本号track的历史。以后每发一个新版本,在最前面加一条。
 var Changelog = []ChangelogEntry{
 	{
+		Version: "0.6.2",
+		Date:    "2026-08-22",
+		Notes: []string{
+			"修复:连续两次自动升级之间托盘一直没重启时,第二次升级会因旧" +
+				" .old 文件被占用而失败——改用带时间戳的唯一备份名,占用中的" +
+				"旧文件等进程退出后再清理",
+		},
+	},
+	{
 		Version: "0.6.1",
 		Date:    "2026-08-22",
 		Notes: []string{
