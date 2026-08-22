@@ -40,7 +40,7 @@ func TestParseDiagPath(t *testing.T) {
 // 留一个空字符串给用户看。
 func TestSetupNetclientResult_EmptyOutputOnFailureGetsLogHint(t *testing.T) {
 	const installLogPath = `C:\ProgramData\NetSentry\install.log`
-	result := setupNetclientResult("/nonexistent/netsentry-does-not-exist", installLogPath, "some-token")
+	result := setupNetclientResult("/nonexistent/netsentry-does-not-exist", installLogPath, "some-token", "", "")
 
 	if result.Success {
 		t.Fatalf("setupNetclientResult() Success = true, want false (exePath does not exist)")

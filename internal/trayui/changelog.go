@@ -13,6 +13,14 @@ type ChangelogEntry struct {
 // 不倒填之前没有版本号track的历史。以后每发一个新版本,在最前面加一条。
 var Changelog = []ChangelogEntry{
 	{
+		Version: "0.5.10",
+		Date:    "2026-08-22",
+		Notes: []string{
+			"新增:面板'加入企业网络'表单加入设备名称和端口两个选填项(CLI 侧早已支持" +
+				" --name/-p),留空分别使用本机设备名和 51821,与命令行行为一致",
+		},
+	},
+	{
 		Version: "0.5.9",
 		Date:    "2026-08-22",
 		Notes: []string{

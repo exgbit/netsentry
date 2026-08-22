@@ -51,8 +51,17 @@ func runExeCommand(exePath string, args ...string) ActionResult {
 // Success 是准的,但失败时 Output 经常是空字符串,面板上看起来就是一句干巴巴的
 // "失败"、没有任何原因。这里在"失败且没有任何输出"时补一句指引,指向
 // doInstall/doSetupNetclient 已经在写的 install.log——好过什么都不说。
-func setupNetclientResult(exePath, installLogPath, token string) ActionResult {
-	result := runExeCommand(exePath, "setup-netclient", "-t", token)
+func setupNetclientResult(exePath, installLogPath, token, port, name string) ActionResult {
+	// port/name 为空时不传对应 flag,由 setup-netclient 子命令自己兜底默认值
+	// (端口 51821、设备名取本机 hostname),面板和 CLI 两条入口保持同一套默认逻辑。
+	args := []string{"setup-netclient", "-t", token}
+	if port != "" {
+		args = append(args, "-p", port)
+	}
+	if name != "" {
+		args = append(args, "--name", name)
+	}
+	result := runExeCommand(exePath, args...)
 	if !result.Success && result.Output == "" {
 		result.Output = "未捕获到详细输出(安装过程发生在提权后的独立进程里)。" +
 			"请查看 " + installLogPath + " 了解具体失败原因。"

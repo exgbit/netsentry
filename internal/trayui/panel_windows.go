@@ -130,9 +130,9 @@ func bindPanel(w webview2.WebView, cfg PanelConfig) {
 		}
 		w.SetSize(width, panelHeight, webview2.HintFixed)
 	})
-	w.Bind("setupNetclient", func(token string) {
+	w.Bind("setupNetclient", func(token, port, name string) {
 		runAsync(w, "setupNetclient", func() ActionResult {
-			return setupNetclientResult(cfg.ExePath, cfg.InstallLogPath, token)
+			return setupNetclientResult(cfg.ExePath, cfg.InstallLogPath, token, port, name)
 		})
 	})
 	w.Bind("backupNow", func() {

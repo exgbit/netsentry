@@ -217,6 +217,9 @@
     margin: 0 0 var(--sp-2);
     display: block;
   }
+  /* Token 之后的字段之间留出间距(第一个字段贴着描述文字,不用额外加) */
+  .field-label + input[type=text] + .field-label,
+  .form-field-gap { margin-top: var(--sp-4); }
 
   input[type=text] {
     width: 100%;
@@ -600,6 +603,10 @@
         <p class="form-desc">粘贴管理员提供的 enrollment token,完成一次性安装即可自动接入并持续自我修复。</p>
         <label class="field-label" for="token-input">Enrollment Token</label>
         <input type="text" id="token-input" placeholder="例如 nc_9f8a2e...">
+        <label class="field-label form-field-gap" for="name-input">设备名称(选填)</label>
+        <input type="text" id="name-input" placeholder="留空则使用本机设备名">
+        <label class="field-label form-field-gap" for="port-input">端口(选填)</label>
+        <input type="text" id="port-input" placeholder="留空则使用 51821">
         <button class="btn-primary" id="setup-btn">安装并加入网络</button>
       </div>
     </div>
@@ -779,7 +786,15 @@
   document.getElementById('setup-btn').addEventListener('click', function () {
     var token = document.getElementById('token-input').value.trim();
     if (!token) { return; }
-    runAction('安装并加入网络', 'setupNetclient', function () { window.setupNetclient(token); }).then(function () {
+    var name = document.getElementById('name-input').value.trim();
+    var port = document.getElementById('port-input').value.trim();
+    // 端口只做最基本的前置校验(纯数字且在合法范围),避免明显错误的值传到
+    // netclient join 之后才报一个难懂的错;留空表示用默认值,由 CLI 侧兜底。
+    if (port !== '' && !(/^\d+$/.test(port) && +port >= 1 && +port <= 65535)) {
+      showOutput('[失败] 端口必须是 1-65535 之间的数字,或留空使用默认值 51821', 'err');
+      return;
+    }
+    runAction('安装并加入网络', 'setupNetclient', function () { window.setupNetclient(token, port, name); }).then(function () {
       manualReconfigure = false;
       refreshStatus();
     });
