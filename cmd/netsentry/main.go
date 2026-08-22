@@ -26,6 +26,7 @@ import (
 	"netsentry/internal/netpriority"
 	"netsentry/internal/schedtask"
 	"netsentry/internal/selfcleanup"
+	"netsentry/internal/selfupdate"
 	"netsentry/internal/settings"
 	"netsentry/internal/startmenu"
 	"netsentry/internal/sysreport"
@@ -38,7 +39,7 @@ import (
 const (
 	netclientDir = `C:\Program Files (x86)\Netclient\`
 	guardDir     = `C:\ProgramData\NetSentry\`
-	guardVersion = "0.5.14"
+	guardVersion = "0.6.0"
 )
 
 func backupDir() string        { return guardDir + `backup\` }
@@ -55,7 +56,7 @@ func installedTrayExePath() string { return guardDir + "netsentry-tray.exe" }
 
 func main() {
 	if len(os.Args) < 2 {
-		fmt.Println("usage: netsentry <backup|watch|diag|install|uninstall|setup-netclient|tray>")
+		fmt.Println("usage: netsentry <backup|watch|diag|install|uninstall|setup-netclient|tray|version>")
 		os.Exit(1)
 	}
 	switch os.Args[1] {
@@ -73,6 +74,8 @@ func main() {
 		runSetupNetclient()
 	case "tray":
 		runTray()
+	case "version":
+		fmt.Println(guardVersion)
 	default:
 		fmt.Println("unknown command:", os.Args[1])
 		os.Exit(1)
@@ -148,6 +151,18 @@ func runWatch() {
 	} else if npResult.Applied {
 		_ = guardlog.Append(guardLogPath(), "INFO", "netpriority: "+npResult.Detail)
 		fmt.Println("netpriority:", npResult.Detail)
+	}
+
+	// 自动升级检查:镜像地址在 settings.json(UpdateBaseURL),内部节流为每天
+	// 最多真正检查一次。失败只记日志,不影响 watch 的退出码——升级是锦上添花,
+	// 不能因为镜像临时不可用把巡检标成失败。
+	s, _ := settings.Load(settingsPath())
+	if upResult, upErr := selfupdate.Run(s.UpdateBaseURL, guardVersion, guardDir); upErr != nil {
+		_ = guardlog.Append(guardLogPath(), "WARN", "selfupdate: "+upErr.Error())
+		fmt.Println("selfupdate WARN:", upErr)
+	} else if upResult.Updated {
+		_ = guardlog.Append(guardLogPath(), "INFO", "selfupdate: "+upResult.Detail)
+		fmt.Println("selfupdate:", upResult.Detail)
 	}
 }
 

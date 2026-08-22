@@ -15,11 +15,19 @@ type Settings struct {
 	// 硬编码在源码里("改了要重新编译发布"),对要把这个工具分发给同事的内部
 	// IT 场景不现实,换成配置文件让管理员按每个部署环境自己调整。
 	ConnectivityTargets []string `json:"connectivityTargets"`
+	// UpdateBaseURL 是自动升级的镜像根地址(其下应有 version.json 和两个 exe,
+	// 见 internal/selfupdate)。留空/缺失用默认值;设为 "disabled" 关闭自动升级。
+	// 默认指向公司网关上的内网镜像——从 GitHub 下载太慢/不稳定,正是做镜像和
+	// 自动升级功能的起因。
+	UpdateBaseURL string `json:"updateBaseURL"`
 }
 
 // Default 是没有配置文件、或配置文件里某个字段留空时用的默认值。
 func Default() Settings {
-	return Settings{ConnectivityTargets: []string{"100.67.147.4"}}
+	return Settings{
+		ConnectivityTargets: []string{"100.67.147.4"},
+		UpdateBaseURL:       "https://v-api.tomtoc.cn/netsentry",
+	}
 }
 
 // Load 读取 path 处的 JSON 配置文件。
@@ -43,6 +51,9 @@ func Load(path string) (Settings, error) {
 	}
 	if len(s.ConnectivityTargets) == 0 {
 		s.ConnectivityTargets = def.ConnectivityTargets
+	}
+	if s.UpdateBaseURL == "" {
+		s.UpdateBaseURL = def.UpdateBaseURL
 	}
 	return s, nil
 }

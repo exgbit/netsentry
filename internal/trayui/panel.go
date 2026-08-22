@@ -123,7 +123,11 @@ func saveSettings(settingsPath string, targets []string) ActionResult {
 	if len(cleaned) == 0 {
 		return ActionResult{Success: false, Output: "至少需要保留一个 IP"}
 	}
-	data, err := json.MarshalIndent(settings.Settings{ConnectivityTargets: cleaned}, "", "  ")
+	// 先读现有配置再改目标 IP 字段——settings.json 里还有 UpdateBaseURL 等其他
+	// 字段,整体重写时不能把管理员改过的值抹掉。
+	current, _ := settings.Load(settingsPath)
+	current.ConnectivityTargets = cleaned
+	data, err := json.MarshalIndent(current, "", "  ")
 	if err != nil {
 		return ActionResult{Success: false, Output: "序列化设置失败: " + err.Error()}
 	}

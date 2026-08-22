@@ -1,4 +1,4 @@
-.PHONY: build clean
+.PHONY: build clean manifest
 
 # NetSentry 编译成两个 Windows 产物,必须一起分发到同一目录下再跑 install:
 #
@@ -17,6 +17,17 @@ build:
 	mkdir -p dist
 	GOOS=windows GOARCH=amd64 go build -o dist/netsentry.exe ./cmd/netsentry
 	GOOS=windows GOARCH=amd64 go build -ldflags="-H=windowsgui" -o dist/netsentry-tray.exe ./cmd/netsentry
+	$(MAKE) manifest
+
+# manifest 生成 dist/version.json——自动升级(internal/selfupdate)从镜像上读的
+# 版本清单,内容是当前版本号 + 两个 exe 的 SHA256。发布新版本时把 dist/ 下的
+# 三个文件一起上传到镜像目录即可。
+manifest:
+	@VERSION=$$(sed -n 's/.*guardVersion = "\(.*\)"/\1/p' cmd/netsentry/main.go); \
+	SUM1=$$(shasum -a 256 dist/netsentry.exe | cut -d' ' -f1); \
+	SUM2=$$(shasum -a 256 dist/netsentry-tray.exe | cut -d' ' -f1); \
+	printf '{"version":"%s","files":{"netsentry.exe":"%s","netsentry-tray.exe":"%s"}}\n' "$$VERSION" "$$SUM1" "$$SUM2" > dist/version.json; \
+	cat dist/version.json
 
 clean:
 	rm -rf dist

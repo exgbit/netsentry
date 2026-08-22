@@ -13,6 +13,16 @@ type ChangelogEntry struct {
 // 不倒填之前没有版本号track的历史。以后每发一个新版本,在最前面加一条。
 var Changelog = []ChangelogEntry{
 	{
+		Version: "0.6.0",
+		Date:    "2026-08-22",
+		Notes: []string{
+			"新增:自动升级——每天检查一次内网镜像上的新版本,自动下载校验并替换," +
+				"正在运行的进程在下次启动时用上新版本;镜像地址在 settings.json 的" +
+				" updateBaseURL,设为 disabled 可关闭",
+			"新增:netsentry version 子命令,输出当前版本号",
+		},
+	},
+	{
 		Version: "0.5.14",
 		Date:    "2026-08-22",
 		Notes: []string{
