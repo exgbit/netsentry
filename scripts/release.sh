@@ -33,7 +33,7 @@ unset GOROOT
 
 [ -z "$(git status --porcelain)" ] || { echo "错误: git 工作区不干净,先提交或还原改动"; exit 1; }
 
-CODE_VERSION=$(sed -n 's/.*guardVersion = "\(.*\)"/\1/p' cmd/netsentry/main.go)
+CODE_VERSION=$(sed -n 's/.*Guard = "\(.*\)"/\1/p' internal/appversion/appversion.go)
 [ "$CODE_VERSION" = "$VERSION" ] || {
 	echo "错误: 参数版本 $VERSION 与代码里的 guardVersion=$CODE_VERSION 不一致"
 	exit 1
@@ -46,6 +46,7 @@ go test ./...
 echo "== 构建 =="
 make clean
 make build
+make build-mac
 
 echo "== 签名 version.json =="
 SIGNING_KEY="$HOME/.config/netsentry/signing.key"
@@ -61,19 +62,22 @@ PUB_KEY=$(go run ./cmd/signmanifest pub -key "$SIGNING_KEY")
 	exit 1
 }
 go run ./cmd/signmanifest sign -key "$SIGNING_KEY" -in dist/version.json -out dist/version.json.sig
+go run ./cmd/signmanifest sign -key "$SIGNING_KEY" -in dist/version-mac.json -out dist/version-mac.json.sig
 
 echo "== GitHub 发布 v$VERSION =="
 git tag "v$VERSION"
 git push origin main "v$VERSION"
-gh release create "v$VERSION" dist/netsentry.exe dist/netsentry-tray.exe \
+gh release create "v$VERSION" dist/netsentry.exe dist/netsentry-tray.exe "dist/netsentry#netsentry-mac (universal)" \
 	--title "v$VERSION" \
 	--notes "见 internal/trayui/changelog.go 中 $VERSION 的条目。"
 
 echo "== 部署内网镜像 =="
 ssh "$MIRROR_HOST" "mkdir -p $MIRROR_DIR/$VERSION"
-scp dist/netsentry.exe dist/netsentry-tray.exe "$MIRROR_HOST:$MIRROR_DIR/$VERSION/"
+scp dist/netsentry.exe dist/netsentry-tray.exe dist/netsentry "$MIRROR_HOST:$MIRROR_DIR/$VERSION/"
 scp dist/version.json "$MIRROR_HOST:$MIRROR_DIR/version.json.new"
 scp dist/version.json.sig "$MIRROR_HOST:$MIRROR_DIR/version.json.sig.new"
-ssh "$MIRROR_HOST" "mv $MIRROR_DIR/version.json.sig.new $MIRROR_DIR/version.json.sig && mv $MIRROR_DIR/version.json.new $MIRROR_DIR/version.json"
+scp dist/version-mac.json "$MIRROR_HOST:$MIRROR_DIR/version-mac.json.new"
+scp dist/version-mac.json.sig "$MIRROR_HOST:$MIRROR_DIR/version-mac.json.sig.new"
+ssh "$MIRROR_HOST" "cd $MIRROR_DIR && mv version.json.sig.new version.json.sig && mv version.json.new version.json && mv version-mac.json.sig.new version-mac.json.sig && mv version-mac.json.new version-mac.json"
 
 echo "== 完成:v$VERSION 已发布,全部客户端将在 1 小时内自动升级 =="

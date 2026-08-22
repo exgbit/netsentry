@@ -1,4 +1,4 @@
-.PHONY: build clean manifest
+.PHONY: build build-mac clean manifest manifest-mac
 
 # NetSentry 编译成两个 Windows 产物,必须一起分发到同一目录下再跑 install:
 #
@@ -23,11 +23,28 @@ build:
 # 版本清单,内容是当前版本号 + 两个 exe 的 SHA256。发布新版本时把 dist/ 下的
 # 三个文件一起上传到镜像目录即可。
 manifest:
-	@VERSION=$$(sed -n 's/.*guardVersion = "\(.*\)"/\1/p' cmd/netsentry/main.go); \
+	@VERSION=$$(sed -n 's/.*Guard = "\(.*\)"/\1/p' internal/appversion/appversion.go); \
 	SUM1=$$(shasum -a 256 dist/netsentry.exe | cut -d' ' -f1); \
 	SUM2=$$(shasum -a 256 dist/netsentry-tray.exe | cut -d' ' -f1); \
 	printf '{"version":"%s","files":{"netsentry.exe":"%s","netsentry-tray.exe":"%s"}}\n' "$$VERSION" "$$SUM1" "$$SUM2" > dist/version.json; \
 	cat dist/version.json
+
+# macOS 版:单一 universal 二进制(arm64 + amd64 lipo 合并),产物名就叫
+# netsentry(无扩展名)——version-mac.json 清单里的文件 key 与安装路径
+# /usr/local/bin/netsentry 的文件名一致,自动升级换入时不用改名。
+build-mac:
+	mkdir -p dist
+	GOOS=darwin GOARCH=arm64 go build -o dist/netsentry-arm64 ./cmd/netsentry-mac
+	GOOS=darwin GOARCH=amd64 go build -o dist/netsentry-amd64 ./cmd/netsentry-mac
+	lipo -create -output dist/netsentry dist/netsentry-arm64 dist/netsentry-amd64
+	rm dist/netsentry-arm64 dist/netsentry-amd64
+	$(MAKE) manifest-mac
+
+manifest-mac:
+	@VERSION=$$(sed -n 's/.*Guard = "\(.*\)"/\1/p' internal/appversion/appversion.go); \
+	SUM=$$(shasum -a 256 dist/netsentry | cut -d' ' -f1); \
+	printf '{"version":"%s","files":{"netsentry":"%s"}}\n' "$$VERSION" "$$SUM" > dist/version-mac.json; \
+	cat dist/version-mac.json
 
 clean:
 	rm -rf dist

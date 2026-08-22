@@ -13,6 +13,14 @@ type ChangelogEntry struct {
 // 不倒填之前没有版本号track的历史。以后每发一个新版本,在最前面加一条。
 var Changelog = []ChangelogEntry{
 	{
+		Version: "0.7.0",
+		Date:    "2026-08-22",
+		Notes: []string{
+			"新增:macOS 版(Phase 1,命令行 + 后台巡检):同一套备份自愈/" +
+				"broker 卡死检测/验签自动升级,适配 launchd 守护;暂无图形界面",
+		},
+	},
+	{
 		Version: "0.6.3",
 		Date:    "2026-08-22",
 		Notes: []string{

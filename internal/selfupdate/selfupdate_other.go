@@ -1,4 +1,4 @@
-//go:build !windows
+//go:build !windows && !darwin
 
 package selfupdate
 
@@ -11,6 +11,6 @@ type Result struct {
 }
 
 // Run 在非 Windows 平台上不可用,只是为了让 go build ./... 能跨平台通过。
-func Run(baseURL, currentVersion, dir string) (Result, error) {
+func Run(baseURL, currentVersion, dir, stateDir string) (Result, error) {
 	return Result{}, errors.New("selfupdate: not supported on this platform")
 }

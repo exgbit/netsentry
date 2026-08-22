@@ -16,6 +16,7 @@ import (
 
 	"github.com/getlantern/systray"
 
+	"netsentry/internal/appversion"
 	"netsentry/internal/autostart"
 	"netsentry/internal/backup"
 	"netsentry/internal/defenderexcl"
@@ -40,7 +41,7 @@ import (
 const (
 	netclientDir = `C:\Program Files (x86)\Netclient\`
 	guardDir     = `C:\ProgramData\NetSentry\`
-	guardVersion = "0.6.3"
+	guardVersion = appversion.Guard
 )
 
 func backupDir() string        { return guardDir + `backup\` }
@@ -158,7 +159,7 @@ func runWatch() {
 	// 最多真正检查一次。失败只记日志,不影响 watch 的退出码——升级是锦上添花,
 	// 不能因为镜像临时不可用把巡检标成失败。
 	s, _ := settings.Load(settingsPath())
-	if upResult, upErr := selfupdate.Run(s.UpdateBaseURL, guardVersion, guardDir); upErr != nil {
+	if upResult, upErr := selfupdate.Run(s.UpdateBaseURL, guardVersion, guardDir, guardDir); upErr != nil {
 		_ = guardlog.Append(guardLogPath(), "WARN", "selfupdate: "+upErr.Error())
 		fmt.Println("selfupdate WARN:", upErr)
 	} else if upResult.Updated {

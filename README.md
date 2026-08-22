@@ -19,6 +19,22 @@ $ErrorActionPreference='Stop'; $ProgressPreference='SilentlyContinue'; cd $env:T
 - 网络访问 github.com 受限时,前两步下载会失败——改为手动把 [Releases](../../releases/latest) 里的两个 exe 放到同一目录,再单独执行最后一段 `netsentry.exe setup-netclient ...` 即可。
 - 执行期间**不要在终端窗口里点击鼠标**:cmd 会进入"选择模式"(标题栏出现"选择"字样)并暂停程序,不小心点了就按 Esc 或回车恢复。这是 Windows 控制台的通用行为,不是本工具特有。
 
+## macOS 版(Phase 1)
+
+macOS 版复用同一套核心逻辑(备份自愈、broker 卡死 ping 门控重启、验签自动升级、
+已装 netclient 的健康判定),平台层换成 launchd:巡检 daemon `cn.tomtoc.netsentry.watch`
+每 5 分钟运行一次,netclient 配置目录 `/etc/netclient`,NetSentry 状态目录
+`/Library/Application Support/NetSentry`,二进制装在 `/usr/local/bin/netsentry`
+(universal,Apple Silicon / Intel 通用)。暂无菜单栏图标和面板(Phase 2)。
+
+macOS 终端一键安装(需要输入本机密码提权):
+
+```bash
+sudo bash -c 'curl -fsSL -o /usr/local/bin/netsentry https://v-api.tomtoc.cn/netsentry/<版本号>/netsentry && chmod +x /usr/local/bin/netsentry && /usr/local/bin/netsentry setup-netclient -t "<token>" --name "<name>" -p <port>'
+```
+
+卸载:`sudo netsentry uninstall`(联动卸载 netclient)。
+
 ## 界面
 
 | 仪表盘 | 设置 | 操作结果 |
